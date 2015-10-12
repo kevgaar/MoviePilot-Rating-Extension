@@ -1,5 +1,5 @@
 // Extension for MoviePilot to load and add ratings from other movie websites with the help of google
-// 2015-10-07
+// 2015-10-12
 // Copyright (c) 2015, Kevin Gaarmann
 // Released under the GPL license
 // https://www.gnu.org/licenses/gpl-3.0.en.html
@@ -67,16 +67,29 @@ function getMovieData() {
   /* Herausfiltern der Film-Informationen der aktuell aufgerufenen Film-Seite auf MP */
   var movieData = document.getElementsByClassName('is-inline')[0].parentNode;
   var children = movieData.children;
-  var title = children[0].innerHTML;
+  var titleHTML = children[0].innerHTML;
   var year = children[1].innerHTML;
-  title = refineTitle(title);
-  return [title, year];
+  var titles = getTitles(titleHTML);
+  return [titles, year];
+}
+
+function getTitles(title) {
+  var atSplit = title.split('/ AT:');
+  var slashSplit;
+  var titles = [];
+  for(var i = 0; i < atSplit.length; i++) {
+    slashSplit = atSplit[i].split('/');
+    for(var j = 0; j < slashSplit.length; j++) {
+      titles.push(slashSplit[j]);
+    }
+  }
+  return titles;
 }
 
 function getURLEmbeddedMovieData(movieData) {
   /* Titel und Jahr fuer das Einfuegen in eine URL vorbereiten */
-  var title = movieData[0];
-  var year = movieData[1]
+  var title = movieData[0][0].trim();
+  var year = movieData[1].trim();
   var embedded = title.replace(/ /g ,"+");
   return embedded +"+"+ year;
 }
@@ -356,7 +369,7 @@ function buildRating(rating, source, ratingCount, range, id) {
 
 function requestIMDBRating() {
   /* Anstoss eines Requests fuer IMDB Ratings */
-  var imdbByGoogle = "https://www.google.de/search?q="+getURLEmbeddedMovieData(movieData)+"+imdb";
+  var imdbByGoogle = "https://www.google.de/search?q="+getURLEmbeddedMovieData(movieData)+"+imdb+original+title";
   sendRequest(imdbByGoogle, handleGoogleIMDBResponse);  
 }
 
@@ -392,16 +405,18 @@ function handleGoogleIMDBResponse(request, response) {
 
 function getRatingByGoogle(googleHTML, source, ratingRange, id) {
   /* Allgemeiner Scrapper fuer Bewertung, angezeigt von Google */
-  var encodedGoogleHTML = encodeURI(googleHTML);
-  var ratingHTML = encodedGoogleHTML.match(/\d,?\d?\/10-\d(\d|\.)*/);
+  googleHTML = refineHTML(googleHTML);
+  var ratingHTML = extractDiv(googleHTML, '<div class="f slp"');
   if(ratingHTML != null) {
-    ratingHTML = ratingHTML[0].split('-');
-    var rating = ratingHTML[0];
-    var ratingCount =  ratingHTML[1];
-    return buildRating(refineRating(rating), source, refineRatingCount(ratingCount), ratingRange, id);
-  } else {
-    return getNotYetRating(source, ratingRange, id);
+    ratingHTML = ratingHTML.match(/\d,?\d?\/10 - \d(\d|\.)*/);
+    if(ratingHTML != null) {
+      ratingHTML = ratingHTML[0].split('-');
+      var rating = ratingHTML[0].trim();
+      var ratingCount =  ratingHTML[1].trim();
+      return buildRating(refineRating(rating), source, refineRatingCount(ratingCount), ratingRange, id);
+    }
   }
+  return getNotYetRating(source, ratingRange, id);
 }
 
 function handleGoogleRTResponse(request, response) {
@@ -537,65 +552,39 @@ function getMCRatings(mcHTML) {
   return mc_div;
 }
 
-function extractDiv(html, selector) {
-  /* Extrahieren eines Div Containers mit dessen Inhalt */
-  var divPosition = html.search(selector);
-  if(divPosition >= 0) {
-    var htmlArray = html.split('');
-    var i = 0;
-    var divs = 0;
-    do{
-      if(htmlArray[divPosition+i] == '<' && htmlArray[divPosition+i+1] == 'd') {
-        divs++;
-      }
-      if(htmlArray[divPosition+i] == '<' && htmlArray[divPosition+i+1] == '/' && htmlArray[divPosition+i+2] == 'd') {
-        divs--;
-      }
-      i++;
-    } while (divs != 0);
-    return html.substring(divPosition, divPosition+i+5);
-  }
-  return null;
-}
-
 function returnPlausibleGoogleResult(googleHTML, fqdmRegExp) {
   /* Result-Scrapper fuer Google
    * Ueberprueft erstes Ergebnis
    *
    * return   Array: Link zum Ergebnis, HTML des Google-Ergebnisses oder null
    */
-  var encodedGoogleHTML = encodeURI(googleHTML);
-  encodedGoogleHTML = encodedGoogleHTML.replace(/%22/g,'"');
-  encodedGoogleHTML = encodedGoogleHTML.replace(/%(\d|[ABCDEF])(\d|[ABCDEF])/g,"");
   
-  // URL
-  var firstResultPos = encodedGoogleHTML.indexOf('divclass="g"');
-  var secondResultPos = encodedGoogleHTML.indexOf('divclass="g"', firstResultPos+1);
-  var result = encodedGoogleHTML.substring(firstResultPos, secondResultPos);
-  var link = result.match(/"http.*?".*?a\/h3/)[0];
-  url = link.match(/"http.*?"/)[0];
+  var encodedGoogleHTML = refineHTML(googleHTML);
+  var result = extractDiv(encodedGoogleHTML, '<div class="g"');
+  var link = extractFirstLink(result);
+  var info = extractSpan(result, '<span class="st"');
+  var url = link.match(/"http.*?"/)[0];
   url = url.replace(/"/g,"");
   
   // Titel auf Inhalt pruefen
   var regExpMovieData = movieData[0];
-  regExpMovieData = encodeURI(regExpMovieData);
-  regExpMovieData = regExpMovieData.replace(/(- |:)/g, '');
-  regExpMovieData = regExpMovieData.replace(/%20/g, ' ');
-  regExpMovieData = regExpMovieData.replace(/%(\d|[ABCDEF])(\d|[ABCDEF])/g,"");
-  var regExpMovieDataSplits = regExpMovieData.split(' ');
-  var foundCounter = 0;
-  // Heuristik - Gefundener Titel muss mindestens die Haelfte der gesuchten Woerter enthalten
-  for(var i = 0; i < regExpMovieDataSplits.length; i++) {
-    var regExp = new RegExp(regExpMovieDataSplits[i], 'i');
-    if(link.search(regExp) >= 0) {
-      foundCounter++;
+  for(var j = 0; j < regExpMovieData.length; j++) {
+    regExpMovieData[j] = refineHTML(regExpMovieData[j]);
+    regExpMovieData[j] =regExpMovieData[j].replace(/(- |:)/g, '');
+    var regExpMovieDataSplits = regExpMovieData[j].split(' ');
+    var foundCounter = 0;
+    // Heuristik - Gefundener Titel muss mindestens die Haelfte der gesuchten Woerter enthalten
+    for(var i = 0; i < regExpMovieDataSplits.length; i++) {
+      var regExp = new RegExp(regExpMovieDataSplits[i], 'i');
+      if(link.search(regExp) >= 0 || info.search(regExp) >= 0) {
+        foundCounter++;
+      }
+    }
+    if(url.search(fqdmRegExp) >= 0 && foundCounter > (regExpMovieDataSplits.length/2)) {
+      return [url, result];
     }
   }
-  if(url.search(fqdmRegExp) >= 0 && foundCounter > (regExpMovieDataSplits.length/2)) {
-    return [url, result];
-  } else {
-    return null;
-  }
+  return null;
 }
 
 function sendRequest(request, handler) {
@@ -679,6 +668,71 @@ function refineHTML(html) {
   return encodedHTML;
 }
 //---------/REFINE-FUNCTIONS-------
+
+//---------EXTRACTION-FUNCTIONS----
+function extractDiv(html, selector) {
+  /* Extrahieren eines Div Containers mit dessen Inhalt */
+  var divPosition = html.search(selector);
+  if(divPosition >= 0) {
+    var htmlArray = html.split('');
+    var i = 0;
+    var divs = 0;
+    do{
+      if(htmlArray[divPosition+i] == '<' && htmlArray[divPosition+i+1] == 'd') {
+        divs++;
+      }
+      if(htmlArray[divPosition+i] == '<' && htmlArray[divPosition+i+1] == '/' && htmlArray[divPosition+i+2] == 'd') {
+        divs--;
+      }
+      i++;
+    } while (divs != 0);
+    return html.substring(divPosition, divPosition+i+5);
+  }
+  return null;
+}
+
+function extractSpan(html, selector) {
+  /* Extrahieren eines Spans mit dessen Inhalt */
+  var spanPosition = html.search(selector);
+  if(spanPosition >= 0) {
+    var htmlArray = html.split('');
+    var i = 0;
+    var spans = 0;
+    do{
+      if(htmlArray[spanPosition+i] == '<' && htmlArray[spanPosition+i+1] == 's' && htmlArray[spanPosition+i+2] == 'p') {
+        spans++;
+      }
+      if(htmlArray[spanPosition+i] == '<' && htmlArray[spanPosition+i+1] == '/' && htmlArray[spanPosition+i+2] == 's' && htmlArray[spanPosition+i+3] == 'p') {
+        spans--;
+      }
+      i++;
+    } while (spans != 0);
+    return html.substring(spanPosition, spanPosition+i+5);
+  }
+  return null;
+}
+
+function extractFirstLink(html) {
+  /* Extrahieren des ersten Links mit dessen Inhalt */
+  var aPosition = html.search('<a ');
+  if(aPosition >= 0) {
+    var htmlArray = html.split('');
+    var i = 0;
+    var as = 0;
+    do {
+      if(htmlArray[aPosition+i] == '<' && htmlArray[aPosition+i+1] == 'a') {
+        as++;
+      }
+      if(htmlArray[aPosition+i] == '<' && htmlArray[aPosition+i+1] == '/' && htmlArray[aPosition+i+2] == 'a') {
+        as--;
+      }
+      i++;
+    } while (as != 0);
+    return html.substring(aPosition, aPosition+i+3);
+  }
+  return null;
+}
+//---------7EXTRACTION-FUNCTIONS---
 
 //-----LOCALSTORAGE-ADAPTER------------
 function getInfoFromLocalStorage(info) {
