@@ -1,9 +1,10 @@
-// Extension for MoviePilot to load and add ratings from other movie websites with the help of google
-// 2015-10-12
-// Copyright (c) 2015, Kevin Gaarmann
-// Released under the GPL license
-// https://www.gnu.org/licenses/gpl-3.0.en.html
+// Extension for MoviePilot to load and add ratings from other movie websites with the help of Google
+// 2015-12-12
 //
+// "THE MOVIE-WARE LICENSE" (Revision 42):
+// <rockschlumpf@googlemail.com> wrote this file. As long as you retain this notice you
+// can do whatever your want with the content.  If you think it is worth it, feel free to
+// send me a movie in return. Kevin Gaarmann
 // --------------------------------------------------------------------
 //
 // This is a Greasemonkey user script.
@@ -34,7 +35,7 @@
 var REQ_SYNCHRONOUS = false; // asynchroner oder synchroner Request
 var REQ_TIMEOUT = 10000;     // Timeout nach x ms
 
-var LINK_WEBSITES = true;  // Link zu den Webseiten  
+var LINK_WEBSITES = true;  // Link zu den Webseiten anzeigen
 //------/Settings----------------
 
 //-------Constants---------------
@@ -477,7 +478,7 @@ function getRTRatings(rtHTML) {
   
   // Audience
   var audStatsHTML = extractDiv(encodedRtHTML, '<div class="audience-info');
-  if(audStatsHTML != null) {
+  if(audStatsHTML != null && divIsNotEmpty(audStatsHTML)) {
     audStatsHTML = audStatsHTML.replace(/%(\d|[ABCDEF])(\d|[ABCDEF])/g,"");
     var audStats  = audStatsHTML.split("/div");
     var audAvrRating   = audStats[0].match(/\d\.?\d?/)[0];
@@ -669,7 +670,16 @@ function refineHTML(html) {
 }
 //---------/REFINE-FUNCTIONS-------
 
-//---------EXTRACTION-FUNCTIONS----
+//---------HTML-STRUCTURE-FUNCTIONS----
+function divIsNotEmpty(html) {
+  /* Testen, ob sich etwas im innerHTML befindet */
+  if(html.match(/<div class="(.)*?">.?<\/div>/)) {
+    return false;
+  } else {
+    return true;
+  }
+}
+
 function extractDiv(html, selector) {
   /* Extrahieren eines Div Containers mit dessen Inhalt */
   var divPosition = html.search(selector);
@@ -732,9 +742,11 @@ function extractFirstLink(html) {
   }
   return null;
 }
-//---------7EXTRACTION-FUNCTIONS---
+//---------/HTML-STRUCTURE-FUNCTIONS---
 
 //-----LOCALSTORAGE-ADAPTER------------
+/* Nur Hinterlegung binaerer Daten */
+
 function getInfoFromLocalStorage(info) {
   if(typeof(Storage) !== "undefined") {
     var result = localStorage.getItem(info);
@@ -746,7 +758,7 @@ function getInfoFromLocalStorage(info) {
     } else {  // Wert false
       return false;
     }
-  } else {  //  keine local storage unterstuetzung
+  } else {  //  keine local storage unterstuetzung, Default-Wert nutzen
       return true;
   }
 }
