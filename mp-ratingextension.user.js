@@ -29,7 +29,6 @@
 
 // ==/UserScript==
 
-
 //----- Settings ----------------
   //Request-Settings
 var REQ_SYNCHRONOUS = false; // asynchroner oder synchroner Request
@@ -66,11 +65,11 @@ requestMCRating();
 
 function getMovieData() {
   /* Herausfiltern der Film-Informationen der aktuell aufgerufenen Film-Seite auf MP */
-  var movieData = document.getElementsByClassName('is-inline')[0].parentNode;
-  var children = movieData.children;
-  var titleHTML = children[0].innerHTML;
-  var year = children[1].innerHTML;
-  var titles = getTitles(titleHTML);
+  var movieData = document.getElementsByClassName('movie--data')[0];
+  titles = getTitles(movieData.children[0].innerHTML);
+  titles.push(document.getElementsByClassName('movie--headline')[0].innerHTML);
+  var movieData = document.getElementsByClassName('movie--data clearfix')[0];
+  year = movieData.children[1].innerHTML;
   return [titles, year];
 }
 
@@ -599,9 +598,6 @@ function sendRequest(request, handler) {
     var response = GM_xmlhttpRequest({
         method: 'GET',
       url: request,
-      headers: {
-        "Accept": "text/xml"
-      },
       synchronous: REQ_SYNCHRONOUS,   //synchron oder asynchron
       timeout: REQ_TIMEOUT,
       ontimeout: function(response) {alert("Timeout(MP-Rating-Extension):  "+request);}
@@ -615,9 +611,6 @@ function sendRequest(request, handler) {
     GM_xmlhttpRequest({
       method: 'GET',
     url: request,
-    headers: {
-      "Accept": "text/xml"
-    },
     synchronous: REQ_SYNCHRONOUS,
     timeout: REQ_TIMEOUT,
     onreadystatechange: function(response) {
@@ -683,7 +676,7 @@ function divIsNotEmpty(html) {
 function extractDiv(html, selector) {
   /* Extrahieren eines Div Containers mit dessen Inhalt */
   var divPosition = html.search(selector);
-  if(divPosition >= 0) {
+  if(divPosition > 0) {
     var htmlArray = html.split('');
     var i = 0;
     var divs = 0;
@@ -704,7 +697,7 @@ function extractDiv(html, selector) {
 function extractSpan(html, selector) {
   /* Extrahieren eines Spans mit dessen Inhalt */
   var spanPosition = html.search(selector);
-  if(spanPosition >= 0) {
+  if(spanPosition > 0) {
     var htmlArray = html.split('');
     var i = 0;
     var spans = 0;
@@ -725,7 +718,7 @@ function extractSpan(html, selector) {
 function extractFirstLink(html) {
   /* Extrahieren des ersten Links mit dessen Inhalt */
   var aPosition = html.search('<a ');
-  if(aPosition >= 0) {
+  if(aPosition > 0) {
     var htmlArray = html.split('');
     var i = 0;
     var as = 0;
@@ -742,6 +735,7 @@ function extractFirstLink(html) {
   }
   return null;
 }
+
 //---------/HTML-STRUCTURE-FUNCTIONS---
 
 //-----LOCALSTORAGE-ADAPTER------------
