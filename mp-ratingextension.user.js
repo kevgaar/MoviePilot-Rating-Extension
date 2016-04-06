@@ -72,7 +72,12 @@ function getMovieData() {
   titles = getTitles(movieData.children[0].innerHTML);
   titles.push(document.getElementsByClassName('movie--headline')[0].innerHTML);
   var movieData = document.getElementsByClassName('movie--data clearfix')[0];
-  year = movieData.children[1].innerHTML;
+  var i = 0;
+  do{
+    i++;
+    year = movieData.children[i].innerHTML;
+  } while (year.match(/\d\d\d\d/) == null && i < 5)
+  
   return [titles, year];
 }
 
@@ -458,7 +463,6 @@ function handleGoogleWikipediaResponse(request, response) {
   var googleResult = returnPlausibleGoogleResult(googleHTML,fqdmRegExp);
   if(googleResult != null) {
     var movieURL = googleResult[0];
-    //alert(movieURL);
     if(LINK_WEBSITES) {
       var info = buildInfo('Wikipedia', 'The Free', 'Encyclopedia', C_ID_WIKIINFO);
       addRating('info', wrapRatingWithLink(info, movieURL));
@@ -557,14 +561,16 @@ function getRTRatings(rtHTML) {
   }
   
   // Audience
-  var audStatsHTML = extractDiv(encodedRtHTML, '<div class="audience-info');
-  if(audStatsHTML != null && divIsNotEmpty(audStatsHTML)) {
-    audStatsHTML = audStatsHTML.replace(/%(\d|[ABCDEF])(\d|[ABCDEF])/g,"");
-    var audStats  = audStatsHTML.split("/div");
-    var audAvrRating   = audStats[0].match(/\d\.?\d?/)[0];
-    var audRatingCount = audStats[1].match(/\d(\d|,)*/)[0];
-    if(audAvrRating != null && audRatingCount != null) {
-      rt_div.appendChild(buildRating(refineRating(audAvrRating), 'RT Community', refineRatingCount(audRatingCount), '5', C_ID_RTCOMMUNITYRATING));
+  if(encodedRtHTML.search('<div class="wts media') < 0) {
+    var audStatsHTML = extractDiv(encodedRtHTML, '<div class="audience-info');
+    if(audStatsHTML != null && divIsNotEmpty(audStatsHTML)) {
+      audStatsHTML = audStatsHTML.replace(/%(\d|[ABCDEF])(\d|[ABCDEF])/g,"");
+      var audStats  = audStatsHTML.split("/div");
+      var audAvrRating   = audStats[0].match(/\d\.?\d?/)[0];
+      var audRatingCount = audStats[1].match(/\d(\d|,)*/)[0];
+      if(audAvrRating != null && audRatingCount != null) {
+        rt_div.appendChild(buildRating(refineRating(audAvrRating), 'RT Community', refineRatingCount(audRatingCount), '5', C_ID_RTCOMMUNITYRATING));
+      }
     }
   } else {
     rt_div.appendChild(getNotYetRating('RT Community', '5', C_ID_RTCOMMUNITYRATING));
