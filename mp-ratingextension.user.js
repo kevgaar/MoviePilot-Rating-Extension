@@ -35,6 +35,7 @@ var REQ_SYNCHRONOUS = false; // asynchroner oder synchroner Request
 var REQ_TIMEOUT = 10000;     // Timeout nach x ms
 
 var LINK_WEBSITES = true;  // Link zu den Webseiten anzeigen
+var LET_ME_GOOGLE_THAT = true; // Let me google that for you...
 //------/Settings----------------
 
 //-------Constants---------------
@@ -484,7 +485,11 @@ function handleGoogleIMDBResponse(request, response) {
       addRating('imdb', rating);
     }
   } else {
-    addRating('imdb', getNotFoundRating('imdb', '10', C_ID_IMDBRATING));
+    if(LET_ME_GOOGLE_THAT) {
+      addRating('imdb', wrapRatingWithLink(getNotFoundRating('imdb', '10', C_ID_IMDBRATING), request));
+    } else {
+      addRating('imdb', getNotFoundRating('imdb', '10', C_ID_IMDBRATING));
+    }
   }
 }
 
@@ -513,7 +518,11 @@ function handleGoogleRTResponse(request, response) {
     var movieURL = googleResult[0];
     sendRequest(movieURL, handleRTResponse);
   } else {
-    addRating('rt', getNotFoundRating('rotten tomatoes', '100', C_ID_RTRATINGS));
+    if(LET_ME_GOOGLE_THAT) {
+      addRating('rt', wrapRatingWithLink(getNotFoundRating('rotten tomatoes', '100', C_ID_RTRATINGS), request));
+    } else {
+      addRating('rt', getNotFoundRating('rotten tomatoes', '100', C_ID_RTRATINGS));
+    }
   }
 }
 
@@ -587,7 +596,11 @@ function handleGoogleMCResponse(request, response) {
     var movieURL = googleResult[0];
     sendRequest(movieURL, handleMCResponse);
   } else {
-    addRating('mc', getNotFoundRating('metacritic', '100', C_ID_MCRATINGS));
+    if(LET_ME_GOOGLE_THAT){
+      addRating('mc', wrapRatingWithLink(getNotFoundRating('metacritic', '100', C_ID_MCRATINGS), request));
+    } else {
+      addRating('mc', getNotFoundRating('metacritic', '100', C_ID_MCRATINGS));
+    }
   }
 }
 
