@@ -47,6 +47,8 @@ var C_ID_RTCOMMUNITYRATING = 'rtComRating';
 var C_ID_MCRATINGS = 'mcMetacritic';
 var C_ID_MCCRITICSRATING = 'mcCritRating';
 var C_ID_MCCOMMUNITYRATING = 'mcComRating';
+
+var C_ID_WIKIINFO = 'wikiInfo';
 //------/Constants---------------
 
 //-----SETUP---------------------
@@ -59,6 +61,7 @@ setupExtension();
 requestIMDBRating();
 requestRTRating();
 requestMCRating();
+requestWikipediaInfo();
 //-----/Requests-----------------
 
 //-----Implementierung-----------
@@ -150,6 +153,8 @@ function setupExtension() {
   var rtDiv = createElementWithId('div', 'rt');
   var mcDiv = createElementWithId('div', 'mc');
   
+  var infoDiv = createElementWithId('div', 'info');
+  
   var showRatings = localStorage.getItem("showExtRatings")
   if(getInfoFromLocalStorage(C_SHOWRATINGS)){
     extRatingsDiv.style.display = 'inline'; 
@@ -179,6 +184,9 @@ function setupExtension() {
   extRatingsDiv.appendChild(imdbDiv);
   extRatingsDiv.appendChild(rtDiv);
   extRatingsDiv.appendChild(mcDiv);
+  
+  extRatingsDiv.appendChild(infoDiv);
+  
   ratingExtensionDiv.appendChild(hr1);
   ratingExtensionDiv.appendChild(extRatingsDiv);
   ratingExtensionDiv.appendChild(hr2);
@@ -238,6 +246,7 @@ function addSettingsOverlay() {
   var rtComCheckBox    = getCheckBoxFor(C_ID_RTCOMMUNITYRATING, 'RT Community Bewertungen');
   var mcMetaCheckBox   = getCheckBoxFor(C_ID_MCCRITICSRATING, 'MC Metascore');
   var mcComCheckBox    = getCheckBoxFor(C_ID_MCCOMMUNITYRATING, 'MC Community Bewertungen');
+  var infoWikiCheckBox = getCheckBoxFor(C_ID_WIKIINFO, 'Wikipedia Infos');
   
   overlayDiv.id               = 'overlay';
   overlayDiv.style.visibility = 'hidden';
@@ -265,6 +274,7 @@ function addSettingsOverlay() {
   overlayContentDiv.appendChild(rtComCheckBox);
   overlayContentDiv.appendChild(mcMetaCheckBox);
   overlayContentDiv.appendChild(mcComCheckBox);
+  overlayContentDiv.appendChild(infoWikiCheckBox);
   overlayContentDiv.appendChild(exitButton);
   
   overlayDiv.appendChild(overlayContentDiv);
@@ -367,6 +377,56 @@ function buildRating(rating, source, ratingCount, range, id) {
   return ratingWrapper;
 }
 
+function buildInfo(source, sourceInfo, sourceInfoExt, id) {
+  /* Nachbauen der Bewertungs-Struktur auf MP */
+  var infoWrapper = document.createElement('div');
+  infoWrapper.id            = id;
+  infoWrapper.className     = "criticscount";
+  infoWrapper.style.width   = "180px";
+  infoWrapper.style.margin  = "0px 25px 0px 25px";
+  infoWrapper.style.padding = "0px";
+  infoWrapper.style.float   = "left";
+  if(getInfoFromLocalStorage(id)) {
+    infoWrapper.style.display = 'inline';
+  } else {
+    infoWrapper.style.display = 'none';
+  }
+  
+  var span = document.createElement('span');
+  span.className     = "huge";
+  span.innerHTML     = "i"; //Infosymbol
+  span.style.width   = "35px";
+  span.style.margin  = "10px 3px 0px 0px";
+  span.style.padding = "0px";
+  span.style.float   = "left";
+  span.style.textAlign = "center";
+  infoWrapper.appendChild(span);
+  
+  var info = document.createElement('div');
+  info.className     = "quite";
+  info.style.margin  = "0px";
+  info.style.padding = "0px";
+  info.style.float   = "left";
+  
+  var sourceText = document.createTextNode(source); // Quelle
+  info.appendChild(sourceText);
+  info.appendChild(document.createElement('br'));
+  
+  var sourceInfoText = document.createElement('span');
+  sourceInfoText.innerHTML = sourceInfo;
+  info.appendChild(sourceInfoText);
+  info.appendChild(document.createElement('br'));
+
+  var sourceInfoExtText = document.createElement('span');
+  sourceInfoExtText.className = "small";
+  sourceInfoExtText.innerHTML = sourceInfoExt;
+  info.appendChild(sourceInfoExtText);
+
+  infoWrapper.appendChild(info);
+  return infoWrapper;
+}
+
+
 function requestIMDBRating() {
   /* Anstoss eines Requests fuer IMDB Ratings */
   var imdbByGoogle = "https://www.google.de/search?q="+getURLEmbeddedMovieData(movieData)+"+imdb+original+title";
@@ -383,6 +443,27 @@ function requestMCRating() {
   /* Anstoss eines Requests fuer Metacritic Ratings */
   var mcByGoogle = "https://www.google.de/search?q="+getURLEmbeddedMovieData(movieData)+"+metacritic";
   sendRequest(mcByGoogle, handleGoogleMCResponse);  
+}
+
+function requestWikipediaInfo() {
+  /* Anstoss eines Requests fuer Metacritic Ratings */
+  var wikiByGoogle = "https://www.google.de/search?q=site:en.wikipedia.org+"+getURLEmbeddedMovieData(movieData)+"+movie";
+  sendRequest(wikiByGoogle, handleGoogleWikipediaResponse);  
+}
+
+function handleGoogleWikipediaResponse(request, response) {
+  /* Google-Handler - Prueft auf plausible Ergebnisse und stoesst ggf weitere Request an*/
+  var fqdmRegExp = "wikipedia.org";
+  var googleHTML = response.responseText;
+  var googleResult = returnPlausibleGoogleResult(googleHTML,fqdmRegExp);
+  if(googleResult != null) {
+    var movieURL = googleResult[0];
+    //alert(movieURL);
+    if(LINK_WEBSITES) {
+      var info = buildInfo('Wikipedia', 'The Free', 'Encyclopedia', C_ID_WIKIINFO);
+      addRating('info', wrapRatingWithLink(info, movieURL));
+    }
+  }
 }
 
 function handleGoogleIMDBResponse(request, response) {
@@ -558,7 +639,6 @@ function returnPlausibleGoogleResult(googleHTML, fqdmRegExp) {
    *
    * return   Array: Link zum Ergebnis, HTML des Google-Ergebnisses oder null
    */
-  
   var encodedGoogleHTML = refineHTML(googleHTML);
   var result = extractDiv(encodedGoogleHTML, '<div class="g"');
   var link = extractFirstLink(result);
@@ -580,7 +660,7 @@ function returnPlausibleGoogleResult(googleHTML, fqdmRegExp) {
         foundCounter++;
       }
     }
-    if(url.search(fqdmRegExp) >= 0 && foundCounter > (regExpMovieDataSplits.length/2)) {
+    if(url.search(fqdmRegExp) >= 0 && foundCounter >= (regExpMovieDataSplits.length/2)) {
       return [url, result];
     }
   }
@@ -654,6 +734,8 @@ function refineRatingCount(ratingCount) {
 
 function refineHTML(html) {
   var encodedHTML = encodeURI(html);
+  encodedHTML = encodedHTML.replace(/%E2%80%93/g,'-');
+  encodedHTML = encodedHTML.replace(/%25E2%2580%2593/g,'–');
   encodedHTML = encodedHTML.replace(/%3C/g,'<');
   encodedHTML = encodedHTML.replace(/%3E/g,'>');
   encodedHTML = encodedHTML.replace(/%22/g,'"');
