@@ -1,5 +1,5 @@
 // Extension for MoviePilot to load and add ratings from other movie websites with the help of Google
-// 2015-12-12
+// 2016-04-12
 //
 // "THE MOVIE-WARE LICENSE" (Revision 42):
 // <rockschlumpf@googlemail.com> wrote this file. As long as you retain this notice you
@@ -21,6 +21,8 @@
 //
 // ==UserScript==
 // @name          MoviePilot Rating-Extension
+// @version       1.0
+// @downloadURL   https://github.com/kevgaar/MoviePilot-Rating-Extension/raw/master/mp-ratingextension.user.js
 // @namespace     http://www.moviepilot.de/movies/*
 // @description   Script, mit dem die Bewertungen von IMDb und anderen Plattformen ermittelt und angezeigt werden sollen
 // @include       http://www.moviepilot.de/movies/*
@@ -48,6 +50,7 @@ var C_ID_RTCOMMUNITYRATING = 'rtComRating';
 var C_ID_MCRATINGS = 'mcMetacritic';
 var C_ID_MCCRITICSRATING = 'mcCritRating';
 var C_ID_MCCOMMUNITYRATING = 'mcComRating';
+var C_ID_TMDBRATING = 'tmdbRating';
 
 var C_ID_WIKIINFO = 'wikiInfo';
 //------/Constants---------------
@@ -56,13 +59,16 @@ var C_ID_WIKIINFO = 'wikiInfo';
 fixMPLayout();
 var movieData = getMovieData();
 setupExtension();
+
 //-----/SETUP--------------------
 
 //-----Requests------------------
-requestIMDBRating();
-requestRTRating();
-requestMCRating();
+//requestIMDBRating();
+//requestRTRating();
+//requestMCRating();
+//requestDomToImageCode();
 requestWikipediaInfo();
+requestTheMovieDBTitles();
 //-----/Requests-----------------
 
 //-----Implementierung-----------
@@ -83,6 +89,7 @@ function getMovieData() {
 }
 
 function getTitles(title) {
+  title = title.replace(/\(aka(.)*\)/, ""); // aka entfernen
   var atSplit = title.split('/ AT:');
   var slashSplit;
   var titles = [];
@@ -158,6 +165,7 @@ function setupExtension() {
   var imdbDiv = createElementWithId('div', 'imdb');
   var rtDiv = createElementWithId('div', 'rt');
   var mcDiv = createElementWithId('div', 'mc');
+  var tmdbDiv = createElementWithId('div', 'tmdb');
   
   var infoDiv = createElementWithId('div', 'info');
   
@@ -190,6 +198,7 @@ function setupExtension() {
   extRatingsDiv.appendChild(imdbDiv);
   extRatingsDiv.appendChild(rtDiv);
   extRatingsDiv.appendChild(mcDiv);
+  extRatingsDiv.appendChild(tmdbDiv);
   
   extRatingsDiv.appendChild(infoDiv);
   
@@ -252,6 +261,7 @@ function addSettingsOverlay() {
   var rtComCheckBox    = getCheckBoxFor(C_ID_RTCOMMUNITYRATING, 'RT Community Bewertungen');
   var mcMetaCheckBox   = getCheckBoxFor(C_ID_MCCRITICSRATING, 'MC Metascore');
   var mcComCheckBox    = getCheckBoxFor(C_ID_MCCOMMUNITYRATING, 'MC Community Bewertungen');
+  var tmdbCheckBox    = getCheckBoxFor(C_ID_TMDBRATING, 'TMDb Bewertungen');
   var infoWikiCheckBox = getCheckBoxFor(C_ID_WIKIINFO, 'Wikipedia Infos');
   
   overlayDiv.id               = 'overlay';
@@ -280,6 +290,7 @@ function addSettingsOverlay() {
   overlayContentDiv.appendChild(rtComCheckBox);
   overlayContentDiv.appendChild(mcMetaCheckBox);
   overlayContentDiv.appendChild(mcComCheckBox);
+  overlayContentDiv.appendChild(tmdbCheckBox);
   overlayContentDiv.appendChild(infoWikiCheckBox);
   overlayContentDiv.appendChild(exitButton);
   
@@ -432,6 +443,24 @@ function buildInfo(source, sourceInfo, sourceInfoExt, id) {
   return infoWrapper;
 }
 
+function requestWikipediaInfo() {
+  /* Anstoss eines Requests fuer Wikipedia Infos */
+  var wikiByGoogle = "https://www.google.de/search?q=site:en.wikipedia.org+"+getURLEmbeddedMovieData(movieData)+"+movie";
+  sendRequest(wikiByGoogle, handleGoogleWikipediaResponse);  
+}
+
+function requestTheMovieDBTitles() {
+  /* Anstoss eines Requests fuer TMDb Infos und Titel */
+  /* Zentraler Aufruf der Extension, da die Requests der Ratings hierdurch angestossen werden*/
+  var theMovieDBByGoogle = "https://www.google.de/search?q=site:www.themoviedb.org+"+getURLEmbeddedMovieData(movieData);
+  sendRequest(theMovieDBByGoogle, handleGoogleTheMovieDBResponse);  
+}
+
+function requestRatings() {
+  requestIMDBRating();
+  requestRTRating();
+  requestMCRating();
+}
 
 function requestIMDBRating() {
   /* Anstoss eines Requests fuer IMDB Ratings */
@@ -451,14 +480,121 @@ function requestMCRating() {
   sendRequest(mcByGoogle, handleGoogleMCResponse);  
 }
 
-function requestWikipediaInfo() {
-  /* Anstoss eines Requests fuer Metacritic Ratings */
-  var wikiByGoogle = "https://www.google.de/search?q=site:en.wikipedia.org+"+getURLEmbeddedMovieData(movieData)+"+movie";
-  sendRequest(wikiByGoogle, handleGoogleWikipediaResponse);  
+function requestDomToImageCode() {
+  //var url = "https://raw.githubusercontent.com/tsayen/dom-to-image/master/src/dom-to-image.js";
+  var url = "https://github.com/niklasvh/html2canvas/releases/download/0.5.0-alpha1/html2canvas.js";
+  sendRequest(url, handleCode);
+}
+
+function handleCode(request, response) {
+  alert("1");
+  eval(response.responseText);
+  alert("2");
+  
+  var node = document.getElementsByClassName('comment--body js--body expander is-initialized')[0];
+  if(node != null ){alert("3");}
+  if(typeof html2canvas == 'function'){ alert("true");}
+  
+  /*
+  domtoimage.toBlob(node)
+    .then(function (blob) {
+        alert("4");
+        window.saveAs(blob, 'my-node.png');
+    });
+  */
+  /*
+  domtoimage.toPng(node)
+    .then(function (dataUrl) {
+        alert("4");
+        var img = new Image();
+        img.src = dataUrl;
+        document.body.appendChild(img);
+    })
+    .catch(function (error) {
+        console.error('oops, something went wrong!', error);
+    });
+  */
+    html2canvas(node, {
+      onrendered: function(canvas) {
+         alert("4");
+        document.body.appendChild(canvas);
+      }
+    });
+  
+  alert("5");
+}
+
+function handleGoogleTheMovieDBResponse(request, response) {
+  /* Google-Handler - Prueft auf plausible Ergebnisse und verweist ggf. auf TMDb-Eintrag*/
+  var fqdmRegExp = "www.themoviedb.org";
+  var googleHTML = response.responseText;
+  var googleResult = returnPlausibleGoogleResult(googleHTML,fqdmRegExp);
+  if(googleResult != null) {
+    var movieURL = googleResult[0];
+    /*
+    if(LINK_WEBSITES) {
+      var info = buildInfo('TMDB', 'The Movie', 'Database', C_ID_TMDBINFO);
+      addRating('info', wrapRatingWithLink(info, movieURL));
+    }
+    */
+    movieURL = modifyTHMDBUrl(movieURL);
+    sendRequest(movieURL, handleTheMovieDBResponse);
+  } else {
+    requestRatings(); // Suche nach Ratings anstossen, falls Google kein plausibles Ergebnis liefert
+  }
+}
+
+function modifyTHMDBUrl(movieURL) {
+  if(movieURL.search("language=de")) {
+    return movieURL.replace(/language=de/, "language=en");
+  }
+  return movieURL;
+}
+
+function handleTheMovieDBResponse(request, response) {
+  /* Scapper fuer englische Filmtitel und TMDB-Bewertung, stoesst Suche nach allen Bewertungen an */
+  var tmdbHTML = response.responseText;
+  tmdbHTML = refineHTML(tmdbHTML);
+  var tmdbResult = extractSpan(tmdbHTML, '<span itemprop="name">');
+  if(tmdbResult != null) {
+    tmdbResult = tmdbResult.substring('<span itemprop="name">'.length, tmdbResult.length - '</span>'.length +1 );
+    var bubble = movieData[0][0];
+    movieData[0][0] = tmdbResult;
+    movieData[0].push(bubble);
+  }
+  requestRatings(); // Rating-Suche starten
+  
+  var rating = getTheMovieDBRating(tmdbHTML, 'TMDb', '10', C_ID_TMDBRATING);
+  if(LINK_WEBSITES) {
+      addRating('tmdb', wrapRatingWithLink(rating, request));
+    } else {
+      addRating('tmdb', rating);
+  }
+}
+
+function getTheMovieDBRating(tmdbHTML, source, ratingRange, id) {
+   /* Rating-Scrapper fuer TheMovieDB */
+  var tmdb_div = document.createElement('div');
+  tmdb_div.id = id;
+
+  var ratingSpan = extractSpan(tmdbHTML, '<span itemprop="ratingValue"');
+  if(ratingSpan != null) {
+    var tmdbRating = ratingSpan.match(/\d\.?\d?\d?/)[0];
+  }
+  var ratingCountSpan = extractSpan(tmdbHTML, '<span itemprop="ratingCount"');
+  if(ratingCountSpan != null) {;
+    var tmdbRatingCount = ratingCountSpan.match(/(\d)+/)[0];
+  }
+  if(ratingCountSpan != null && tmdbRatingCount == 0) {
+    tmdb_div.appendChild(getNotYetRating('TMDB', ratingRange, id));
+  } else if (ratingSpan != null) {
+    tmdb_div.appendChild(buildRating(refineRating(tmdbRating), 'TMDB', refineRatingCount(tmdbRatingCount), ratingRange, id));
+  }
+  return tmdb_div;
 }
 
 function handleGoogleWikipediaResponse(request, response) {
-  /* Google-Handler - Prueft auf plausible Ergebnisse und stoesst ggf weitere Request an*/
+  /* Google-Handler - Prueft auf plausible Ergebnisse und verweist ggf. auf Wikipdia-Eintrag*/
   var fqdmRegExp = "wikipedia.org";
   var googleHTML = response.responseText;
   var googleResult = returnPlausibleGoogleResult(googleHTML,fqdmRegExp);
@@ -759,6 +895,7 @@ function refineHTML(html) {
   encodedHTML = encodedHTML.replace(/%3E/g,'>');
   encodedHTML = encodedHTML.replace(/%22/g,'"');
   encodedHTML = encodedHTML.replace(/%20/g,' ');
+  encodedHTML = encodedHTML.replace(/&#x27;/g,"'");
   encodedHTML = encodedHTML.replace(/%(\d|[ABCDEF])(\d|[ABCDEF])/g,"");
   return encodedHTML;
 }
