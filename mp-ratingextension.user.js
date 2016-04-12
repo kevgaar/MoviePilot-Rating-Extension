@@ -21,7 +21,7 @@
 //
 // ==UserScript==
 // @name          MoviePilot Rating-Extension
-// @version       1.0a
+// @version       1.1
 // @downloadURL   https://github.com/kevgaar/MoviePilot-Rating-Extension/raw/master/mp-ratingextension.user.js
 // @namespace     http://www.moviepilot.de/movies/*
 // @description   Script, mit dem die Bewertungen von IMDb und anderen Plattformen ermittelt und angezeigt werden sollen
