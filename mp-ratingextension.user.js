@@ -1,5 +1,5 @@
 // Extension for MoviePilot to load and add ratings from other movie websites with the help of Google
-// 2016-04-12
+// 2016-08-08
 //
 // "THE MOVIE-WARE LICENSE" (Revision 42):
 // <rockschlumpf@googlemail.com> wrote this file. As long as you retain this notice you
@@ -21,7 +21,7 @@
 //
 // ==UserScript==
 // @name          MoviePilot Rating-Extension
-// @version       1.2
+// @version       2.0
 // @downloadURL   https://github.com/kevgaar/MoviePilot-Rating-Extension/raw/master/mp-ratingextension.user.js
 // @namespace     http://www.moviepilot.de/movies/*
 // @description   Script, mit dem die Bewertungen von IMDb und anderen Plattformen ermittelt und angezeigt werden sollen
@@ -31,16 +31,8 @@
 
 // ==/UserScript==
 
-//----- Settings ----------------
-//Request-Settings
-var REQ_SYNCHRONOUS = false; // asynchroner oder synchroner Request
-var REQ_TIMEOUT = 10000;     // Timeout nach x ms
-
-var LINK_WEBSITES = true;  // Link zu den Webseiten anzeigen
-var LET_ME_GOOGLE_THAT = true; // Let me google that for you...
-//------/Settings----------------
-
 //-------Constants---------------
+//Div-Names from every single rating. Used to show/hide the ratings via a checkbox
 var C_SHOWRATINGS = 'showExtRatings';
 var C_ID_IMDBRATING = 'imdbRating';
 var C_ID_RTRATINGS = 'rtRatings';
@@ -51,622 +43,595 @@ var C_ID_MCRATINGS = 'mcMetacritic';
 var C_ID_MCCRITICSRATING = 'mcCritRating';
 var C_ID_MCCOMMUNITYRATING = 'mcComRating';
 var C_ID_TMDBRATING = 'tmdbRating';
-
 var C_ID_WIKIINFO = 'wikiInfo';
+
+var DEBUG_MODE = false;
+var VERBOSE = false;
 //------/Constants---------------
 
-//-----SETUP---------------------
-fixMPLayout();
-var movieData = getMovieData();
-setupExtension();
+var Refinery = new Refinery();
+var HTMLExtractor = new HTMLExtractor();
+var MPRatingFactory = new MPRatingFactory();
+var MPExtension = new MPExtension();
 
-//-----/SETUP--------------------
-
-//-----Requests------------------
-requestWikipediaInfo();
-requestTheMovieDBTitles();
-//-----/Requests-----------------
-
-//-----Implementierung-----------
-
-function getMovieData() {
-    /* Herausfiltern der Film-Informationen der aktuell aufgerufenen Film-Seite auf MP */
-    var movieData = document.getElementsByClassName('movie--data')[0];
-    var titles = [];
-    titles.push(document.getElementsByClassName('movie--headline')[0].innerHTML);
-    titles.push(getTitles(movieData.children[0].innerHTML));
-
-    //titles = getTitles(movieData.children[0].innerHTML);
-    //titles.push(document.getElementsByClassName('movie--headline')[0].innerHTML);
-    movieData = document.getElementsByClassName('movie--data clearfix')[0];
-    var i = 0;
-    do{
-        i++;
-        year = movieData.children[i].innerHTML;
-    } while (year.match(/\d\d\d\d/) === null && i < 5);
-
-    return [titles, year];
+if(!MPExtension.setupExtension()){
+	return false;
 }
 
-function getTitles(title) {
-    title = title.replace(/\(aka(.)*\)/, ""); // aka entfernen
-    var atSplit = title.split('/ AT:');
-    var slashSplit;
-    var titles = [];
-    for(var i = 0; i < atSplit.length; i++) {
-        slashSplit = atSplit[i].split('/');
-        for(var j = 0; j < slashSplit.length; j++) {
-            titles.push(slashSplit[j]);
-        }
+MPExtension.appendNewContainer('imdb').appendNewContainer('rt').appendNewContainer('mc').appendNewContainer('tmdb').appendNewContainer('info');
+MPExtension.appendNewCheckbox(C_ID_IMDBRATING, 'IMDB Bewertungen anzeigen');
+MPExtension.appendNewCheckbox(C_ID_RTTOMATOMETER, 'RT Tomatormeter anzeigen');
+MPExtension.appendNewCheckbox(C_ID_RTCRITICSRATING, 'RT Kritiker Bewertungen anzeigen');
+MPExtension.appendNewCheckbox(C_ID_RTCOMMUNITYRATING, 'RT Community Bewertungen anzeigen');
+MPExtension.appendNewCheckbox(C_ID_MCCRITICSRATING, 'MC Metascore anzeigen');
+MPExtension.appendNewCheckbox(C_ID_MCCOMMUNITYRATING, 'MC Community Bewertungen anzeigen');
+MPExtension.appendNewCheckbox(C_ID_TMDBRATING, 'TMDb Bewertungen anzeigen');
+MPExtension.appendNewCheckbox(C_ID_WIKIINFO, 'Wikipedia Infos anzeigen');
+
+var movieData = MPExtension.getMovieData(); //Search MP for information
+if(movieData === null ) {
+	return false;
+}
+// Static variables shared by all instances of Rating
+Rating.movieAliases = movieData[0];
+Rating.movieYear = movieData[1];
+Rating.correctness = {HIGH: 0, MIDDLE: 1, LOW: 2};
+
+//Kicking off the search...
+//The reason TMDB is kicked of first, is that TMDB is used to translate the german movie titles into english. The search with english titles is much more successfull. The other searches will be started by a hooked function of the TMDB rating.
+var tmdbRating = new Rating().ratingSite('TMDB').ratingSiteAbbr('TMDB').ratingId('tmdb').ratingDivId(C_ID_TMDBRATING).websiteURL('www.themoviedb.org/movie/').scrapperFunction(tmdbRatingScrapper).googleHookFunction(startOtherRatings).responseSiteHookFunction(collectEnglishMovieTitles).ratingRequestModifier(tmdbRequestModifier).numberOfResultsIncluded(5).getRating();
+
+function startOtherRatings() {
+/* Function to start the search for ratings from other websites */
+    if(DEBUG_MODE) {
+        console.log("MP-Rating-Extension: TMDB: Start other rating requests.");
     }
-    return titles;
+    var imdbRating = new Rating().ratingSite('IMDB').ratingSiteAbbr('IMDB').ratingRange('10').ratingId('imdb').ratingDivId(C_ID_IMDBRATING).websiteURL('www.imdb.com').googleRating().numberOfResultsIncluded(5).getRating();
+    var rtRating = new Rating().ratingSite('rotten tomatoes').ratingSiteAbbr('RT').ratingId('rt').ratingDivId(C_ID_RTRATINGS).websiteURL('www.rottentomatoes.com/m/').scrapperFunction(rtRatingScrapper).numberOfResultsIncluded(5).getRating();
+    var mcRating = new Rating().ratingSite('metacritic').ratingSiteAbbr('MC').ratingId('mc').ratingDivId(C_ID_MCRATINGS).websiteURL('www.metacritic.com/movie/').scrapperFunction(mcRatingScrapper).numberOfResultsIncluded(5).getRating();
+    var wikiInfo = new Rating().ratingSite('Wikipedia').ratingSiteAbbr('wiki').ratingId('info').ratingDivId(C_ID_WIKIINFO).websiteURL('en.wikipedia.org').info().description('The Free Enzyklopedia').numberOfResultsIncluded(5).getRating();
 }
 
-function getURLEmbeddedMovieData(movieData) {
-    /* Titel und Jahr fuer das Einfuegen in eine URL vorbereiten */
-    var title = movieData[0][0].trim();
-    var year = movieData[1].trim();
-    var embedded = title.replace(/ /g ,"+");
-    return embedded +"+"+ year;
-}
-
-function fixMPLayout() {
-    /* MPs Struktur anpassen, damit alle Bewertungen gleich aussehen */
-    var userAction = document.getElementsByClassName('movie_user_action')[0];
-    userAction.style.width   = "180px";
-    userAction.style.margin  = "0px 25px 0px 25px";
-    userAction.style.padding = "0px";
-    userAction.style.float   = "left";
-
-    var criticsCount = document.getElementsByClassName('criticscount')[0];
-    criticsCount.style.width   = "180px";
-    criticsCount.style.margin  = "0px 25px 0px 25px";
-    criticsCount.style.padding = "0px";
-    criticsCount.style.float   = "left";
-
-    var contentCount = document.getElementsByClassName('contentcount')[0];
-    contentCount.style.width   = "180px";
-    contentCount.style.margin  = "0px 25px 0px 25px";
-    contentCount.style.padding = "0px";
-    contentCount.style.float   = "left";
-
-    var huge = document.getElementsByClassName('huge');
-    for (i = 0; i < huge.length; i++) {
-        huge[i].style.width   = "35px";
-        huge[i].style.margin  = "10px 3px 0px 0px";
-        huge[i].style.padding = "0px";
-        huge[i].style.float   = "left";
-        huge[i].style.textAlign   = "center";
+function collectEnglishMovieTitles(tmdbHTML) {
+/* Hooked function for translating german movie titles into english. Results in better google results */
+    if(DEBUG_MODE) {
+        console.log("MP-Rating-Extension: TMDB: Collecting movie titles.");
     }
-
-    var quite = document.getElementsByClassName('quite');
-    for (i = 0; i < quite.length; i++) {
-        quite[i].style.margin  = "0px";
-        quite[i].style.padding = "0px";
-        quite[i].style.float   = "left";
-    }
-}
-
-function setupExtension() {
-    /* Aufbau der Extension
-   * Einfuegen von Kontrollelementen
-   */
-    var bewertung = document.getElementsByClassName('forecastcount')[0];
-    var parent = bewertung.parentNode;
-
-    var ratingExtensionDiv = createElementWithId('div', 'ratingExtension');
-    var extRatingsDiv = createElementWithId('div', 'extRatings');
-    var ratingExtensionControlDiv = createElementWithId('div', 'ratingExtControl');
-    var hr1 = document.createElement('hr');
-    var hr2 = document.createElement('hr');
-    var toggleContentButton = createElementWithId('span', 'toggleContentButton');
-    var showSettingsButton = createElementWithId('span', 'settingsButton');
-    //var createImageButton = createElementWithId('span', 'imageButton');
-
-    var imdbDiv = createElementWithId('div', 'imdb');
-    var rtDiv = createElementWithId('div', 'rt');
-    var mcDiv = createElementWithId('div', 'mc');
-    var tmdbDiv = createElementWithId('div', 'tmdb');
-
-    var infoDiv = createElementWithId('div', 'info');
-
-    var showRatings = localStorage.getItem("showExtRatings");
-    if(getInfoFromLocalStorage(C_SHOWRATINGS)){
-        extRatingsDiv.style.display = 'inline';
-    } else {
-        extRatingsDiv.style.display = 'none';
-    }
-
-    ratingExtensionControlDiv.style.margin = '0px 0px 0px 25px';
-
-    toggleContentButton.style.color = '#9C9C9C';
-    toggleContentButton.style.cursor = 'pointer';
-    if(getInfoFromLocalStorage(C_SHOWRATINGS)) {
-        toggleContentButton.innerHTML = 'Externe Bewertungen verbergen';
-    } else {
-        toggleContentButton.innerHTML = 'Externe Bewertungen anzeigen';
-    }
-    toggleContentButton.onclick = onToggleContentButtonClick;
-
-    showSettingsButton.style.color = '#9C9C9C';
-    showSettingsButton.style.cursor = 'pointer';
-    showSettingsButton.innerHTML = 'Einstellungen';
-    showSettingsButton.onclick = onSettingButtonClick;
-
-    /*
-    createImageButton.style.color = '#9C9C9C';
-    createImageButton.style.cursor = 'pointer';
-    createImageButton.innerHTML = 'Erzeuge Bild';
-    createImageButton.onclick = onImageButtonClick;
-    */
-
-    hr1.style.margin = '5px 0px 5px 0px';
-    hr2.style.margin = '5px 0px 5px 0px';
-
-    extRatingsDiv.appendChild(imdbDiv);
-    extRatingsDiv.appendChild(rtDiv);
-    extRatingsDiv.appendChild(mcDiv);
-    extRatingsDiv.appendChild(tmdbDiv);
-
-    extRatingsDiv.appendChild(infoDiv);
-
-    ratingExtensionDiv.appendChild(hr1);
-    ratingExtensionDiv.appendChild(extRatingsDiv);
-    ratingExtensionDiv.appendChild(hr2);
-    ratingExtensionControlDiv.appendChild(toggleContentButton);
-    ratingExtensionControlDiv.appendChild(document.createTextNode(' | '));
-    ratingExtensionControlDiv.appendChild(showSettingsButton);
-    //ratingExtensionControlDiv.appendChild(document.createTextNode(' | '));
-    //ratingExtensionControlDiv.appendChild(createImageButton);
-    ratingExtensionDiv.appendChild(ratingExtensionControlDiv);
-    parent.insertBefore(ratingExtensionDiv, bewertung.nextSibling);
-
-    return extRatingsDiv;
-}
-
-function createElementWithId(element, id) {
-    var newDiv = document.createElement(element);
-    newDiv.id = id;
-    return newDiv;
-}
-
-function onToggleContentButtonClick() {
-    /* Handler fuer Click Event - toggleContentButton */
-    var content = document.getElementById('extRatings');
-    var button = document.getElementById('toggleContentButton');
-    if(content.style.display == 'inline') {
-        content.style.display = 'none';
-        button.innerHTML = 'Externe Bewertungen anzeigen';
-        setInfoInLocalStorage(C_SHOWRATINGS, false);
-    } else {
-        content.style.display = 'inline';
-        button.innerHTML ='Externe Bewertungen verbergen';
-        setInfoInLocalStorage(C_SHOWRATINGS, true);
-    }
-}
-
-function onSettingButtonClick() {
-    /* Handler fuer Click Event - settingsButton
-   * Erzeugt onDemand Einstellungen und zeigt sie an
-   */
-    var overlay = document.getElementById('overlay');
-    if(overlay !== null) {
-        overlay.style.visibility = 'visible';
-    } else {
-        overlay = addSettingsOverlay();
-        document.getElementById('ratingExtension').appendChild(overlay);
-        overlay.style.visibility = 'visible';
-    }
-}
-
-function onImageButtonClick() {
-    /* Handler fuer Clicl Event - createImageButton
-     * Erzeugt Bild aus DOM-Element
-     */
-    var node = document.getElementById('ratingExtension');
-
-    domtoimage.toPng(node)
-        .then(function (dataUrl) {
-        var img = new Image();
-        img.src = dataUrl;
-        document.body.appendChild(img);
-    })
-        .catch(function (error) {
-        console.error('oops, something went wrong!', error);
-    });
-}
-
-function addSettingsOverlay() {
-    /* Einstellungen fuer die Extension */
-    var overlayDiv = document.createElement('div');
-    var overlayContentDiv = document.createElement('div');
-    var exitButton = document.createElement('a');
-
-    var imdbCheckBox     = getCheckBoxFor(C_ID_IMDBRATING, 'IMDb Bewertungen');
-    var rtTomatoCheckBox = getCheckBoxFor(C_ID_RTTOMATOMETER, 'RT Tomatometer');
-    var rtCritCheckBox   = getCheckBoxFor(C_ID_RTCRITICSRATING, 'RT Kritiker Bewertungen');
-    var rtComCheckBox    = getCheckBoxFor(C_ID_RTCOMMUNITYRATING, 'RT Community Bewertungen');
-    var mcMetaCheckBox   = getCheckBoxFor(C_ID_MCCRITICSRATING, 'MC Metascore');
-    var mcComCheckBox    = getCheckBoxFor(C_ID_MCCOMMUNITYRATING, 'MC Community Bewertungen');
-    var tmdbCheckBox    = getCheckBoxFor(C_ID_TMDBRATING, 'TMDb Bewertungen');
-    var infoWikiCheckBox = getCheckBoxFor(C_ID_WIKIINFO, 'Wikipedia Infos');
-
-    overlayDiv.id               = 'overlay';
-    overlayDiv.style.visibility = 'hidden';
-    overlayDiv.style.position   = 'absolute';
-    overlayDiv.style.left       = '0px';
-    overlayDiv.style.top        = '0px';
-    overlayDiv.style.width      = '100%';
-    overlayDiv.style.height     = '100%';
-    overlayDiv.style.textAlign  = 'center';
-    overlayDiv.style.zIndex     = '1000';
-
-    overlayContentDiv.style.width           = '300px';
-    overlayContentDiv.style.margin          = '100px auto';
-    overlayContentDiv.style.backgroundColor = '#fff';
-    overlayContentDiv.style.border          = 'solid #000';
-    overlayContentDiv.style.padding         = '15px';
-    overlayContentDiv.style.textAlign       = 'left';
-
-    exitButton.innerHTML = 'Einstellungen schließen';
-    exitButton.onclick = function() {document.getElementById('overlay').style.visibility = 'hidden';};
-
-    overlayContentDiv.appendChild(imdbCheckBox);
-    overlayContentDiv.appendChild(rtTomatoCheckBox);
-    overlayContentDiv.appendChild(rtCritCheckBox);
-    overlayContentDiv.appendChild(rtComCheckBox);
-    overlayContentDiv.appendChild(mcMetaCheckBox);
-    overlayContentDiv.appendChild(mcComCheckBox);
-    overlayContentDiv.appendChild(tmdbCheckBox);
-    overlayContentDiv.appendChild(infoWikiCheckBox);
-    overlayContentDiv.appendChild(exitButton);
-
-    overlayDiv.appendChild(overlayContentDiv);
-    return overlayDiv;
-}
-
-function getCheckBoxFor(id, infoText) {
-    /* Erstellen einzelner Einstellungen */
-    var label = document.createElement('label');
-    var checkBox = document.createElement('input');
-
-    label.appendChild(checkBox);
-    label.appendChild(document.createTextNode(' '+infoText+' anzeigen'));
-    label.appendChild(document.createElement('br'));
-
-    checkBox.id = id+'CheckBox';
-    checkBox.type = 'checkbox';
-    checkBox.checked = getInfoFromLocalStorage(id);
-    checkBox.onchange = function() {
-        setInfoInLocalStorage(id, this.checked);
-        if(this.checked) {
-            document.getElementById(id).style.display = 'inline';
-        } else {
-            document.getElementById(id).style.display = 'none';
-        }
-    };
-    return label;
-}
-
-function addRating(id, rating) {
-    /* Einfuegen einer Bewertung auf MP */
-    document.getElementById(id).appendChild(rating);
-}
-
-function getNotFoundRating(source, ratingRange, id) {
-    /* Erstellen eines Default-Ratings fuer nicht gefundene Ratings */
-    return buildRating('X', source, '0', ratingRange, id);
-}
-
-function getNotYetRating(source, ratingRange, id) {
-    /* Erstellen eines Default-Ratings fuer noch nicht bewertete/freigegebene Filme */
-    return buildRating('-', source, '0', ratingRange, id);
-}
-
-function wrapRatingWithLink(rating, movieURL) {
-    /* Wrapped ein Rating in Link zur entsprechenden Seite */
-    var linkedRating = document.createElement('a');
-    linkedRating.appendChild(rating);
-    linkedRating.title = movieURL;
-    linkedRating.href = movieURL;
-    return linkedRating;
-}
-
-function buildRating(rating, source, ratingCount, range, id) {
-    /* Nachbauen der Bewertungs-Struktur auf MP */
-    var ratingWrapper = document.createElement('div');
-    ratingWrapper.id            = id;
-    ratingWrapper.className     = "criticscount";
-    ratingWrapper.style.width   = "180px";
-    ratingWrapper.style.margin  = "0px 25px 0px 25px";
-    ratingWrapper.style.padding = "0px";
-    ratingWrapper.style.float   = "left";
-    if(getInfoFromLocalStorage(id)) {
-        ratingWrapper.style.display = 'inline';
-    } else {
-        ratingWrapper.style.display = 'none';
-    }
-
-    var span = document.createElement('span');
-    span.className     = "huge";
-    span.innerHTML     = rating;
-    span.style.width   = "35px";
-    span.style.margin  = "10px 3px 0px 0px";
-    span.style.padding = "0px";
-    span.style.float   = "left";
-    span.style.textAlign = "center";
-    ratingWrapper.appendChild(span);
-
-    var ratingInfo = document.createElement('div');
-    ratingInfo.className     = "quite";
-    ratingInfo.style.margin  = "0px";
-    ratingInfo.style.padding = "0px";
-    ratingInfo.style.float   = "left";
-
-    var sourceInfo = document.createTextNode(source);
-    ratingInfo.appendChild(sourceInfo);
-    ratingInfo.appendChild(document.createElement('br'));
-
-    var countInfo = document.createElement('span');
-    countInfo.innerHTML = ratingCount+" Bewertungen";
-    ratingInfo.appendChild(countInfo);
-    ratingInfo.appendChild(document.createElement('br'));
-
-    var rangeInfo = document.createElement('span');
-    rangeInfo.className = "small";
-    rangeInfo.innerHTML = "Skala 0 bis "+range;
-    ratingInfo.appendChild(rangeInfo);
-
-    ratingWrapper.appendChild(ratingInfo);
-    return ratingWrapper;
-}
-
-function buildInfo(source, sourceInfo, sourceInfoExt, id) {
-    /* Nachbauen der Bewertungs-Struktur auf MP */
-    var infoWrapper = document.createElement('div');
-    infoWrapper.id            = id;
-    infoWrapper.className     = "criticscount";
-    infoWrapper.style.width   = "180px";
-    infoWrapper.style.margin  = "0px 25px 0px 25px";
-    infoWrapper.style.padding = "0px";
-    infoWrapper.style.float   = "left";
-    if(getInfoFromLocalStorage(id)) {
-        infoWrapper.style.display = 'inline';
-    } else {
-        infoWrapper.style.display = 'none';
-    }
-
-    var span = document.createElement('span');
-    span.className     = "huge";
-    span.innerHTML     = "i"; //Infosymbol
-    span.style.width   = "35px";
-    span.style.margin  = "10px 3px 0px 0px";
-    span.style.padding = "0px";
-    span.style.float   = "left";
-    span.style.textAlign = "center";
-    infoWrapper.appendChild(span);
-
-    var info = document.createElement('div');
-    info.className     = "quite";
-    info.style.margin  = "0px";
-    info.style.padding = "0px";
-    info.style.float   = "left";
-
-    var sourceText = document.createTextNode(source); // Quelle
-    info.appendChild(sourceText);
-    info.appendChild(document.createElement('br'));
-
-    var sourceInfoText = document.createElement('span');
-    sourceInfoText.innerHTML = sourceInfo;
-    info.appendChild(sourceInfoText);
-    info.appendChild(document.createElement('br'));
-
-    var sourceInfoExtText = document.createElement('span');
-    sourceInfoExtText.className = "small";
-    sourceInfoExtText.innerHTML = sourceInfoExt;
-    info.appendChild(sourceInfoExtText);
-
-    infoWrapper.appendChild(info);
-    return infoWrapper;
-}
-
-function requestWikipediaInfo() {
-    /* Anstoss eines Requests fuer Wikipedia Infos */
-    var wikiByGoogle = "https://www.google.de/search?q=site:de.wikipedia.org+"+getURLEmbeddedMovieData(movieData)+"+movie";
-    sendRequest(wikiByGoogle, handleGoogleWikipediaResponse);
-}
-
-function requestTheMovieDBTitles() {
-    /* Anstoss eines Requests fuer TMDb Infos und Titel */
-    /* Zentraler Aufruf der Extension, da die Requests der Ratings hierdurch angestossen werden*/
-    var theMovieDBByGoogle = "https://www.google.de/search?q=site:www.themoviedb.org+"+getURLEmbeddedMovieData(movieData);
-    sendRequest(theMovieDBByGoogle, handleGoogleTheMovieDBResponse);
-}
-
-function requestRatings() {
-    requestIMDBRating();
-    requestRTRating();
-    requestMCRating();
-}
-
-function requestIMDBRating() {
-    /* Anstoss eines Requests fuer IMDB Ratings */
-    var imdbByGoogle = "https://www.google.de/search?q="+getURLEmbeddedMovieData(movieData)+"+imdb+original+title";
-    sendRequest(imdbByGoogle, handleGoogleIMDBResponse);
-}
-
-function requestRTRating() {
-    /* Anstoss eines Requests fuer Rotten Tomatoes Ratings */
-    var rtByGoogle = "https://www.google.de/search?q="+getURLEmbeddedMovieData(movieData)+"+rotten+tomatoes";
-    sendRequest(rtByGoogle, handleGoogleRTResponse);
-}
-
-function requestMCRating() {
-    /* Anstoss eines Requests fuer Metacritic Ratings */
-    var mcByGoogle = "https://www.google.de/search?q="+getURLEmbeddedMovieData(movieData)+"+metacritic";
-    sendRequest(mcByGoogle, handleGoogleMCResponse);
-}
-
-function handleGoogleTheMovieDBResponse(request, response) {
-    /* Google-Handler - Prueft auf plausible Ergebnisse und verweist ggf. auf TMDb-Eintrag*/
-    var fqdmRegExp = "www.themoviedb.org";
-    var googleHTML = response.responseText;
-    var googleResult = returnPlausibleGoogleResult(googleHTML,fqdmRegExp);
-    if(googleResult !== null) {
-        var movieURL = googleResult[0];
-        movieURL = modifyTHMDBUrl(movieURL);
-        sendRequest(movieURL, handleTheMovieDBResponse);
-    } else {
-        requestRatings(); // Suche nach Ratings anstossen, falls Google kein plausibles Ergebnis liefert
-    }
-}
-
-function modifyTHMDBUrl(movieURL) {
-    if(movieURL.search("language=de")) {
-        return movieURL.replace(/language=de/, "language=en");
-    }
-    return movieURL;
-}
-
-function handleTheMovieDBResponse(request, response) {
-    /* Scapper fuer englische Filmtitel und TMDB-Bewertung, stoesst Suche nach allen Bewertungen an */
-    var tmdbHTML = response.responseText;
-    tmdbHTML = refineHTML(tmdbHTML);
-    //var tmdbResult = extractSpan(tmdbHTML, '<span itemprop="name">');
-    var tmdbResult = extractDiv(tmdbHTML, '<div class="title">');
-
+    var tmdbResult = HTMLExtractor.extractDiv(tmdbHTML, '<div class="title">');
     if(tmdbResult !== null) {
-        tmdbResult = extractFirstLink(tmdbResult);
+        tmdbResult = tmdbResult.match(/>(?!<|\s)(\w|\d|\s)+</);
         if(tmdbResult !== null) {
-            tmdbResult = tmdbResult.match(/>(.*?)</);
-            if(tmdbResult !== null) {
-                tmdbResult = tmdbResult[0];
-                tmdbResult = tmdbResult.replace(">","");
-                tmdbResult = tmdbResult.replace("<","");
-                tmdbResult = tmdbResult.replace(/^\s+|\s+$/g, '');
+            tmdbResult = tmdbResult[0];
+            tmdbResult = tmdbResult.match(/(\w|\d|\s)+/)[0];
+            var replaceOrder = Rating.movieAliases[0];
+            Rating.movieAliases[0] = tmdbResult;
+            Rating.movieAliases.push(replaceOrder);
+        }
+    }
+    startOtherRatings(); // Rating-Suche starten
+}
+
+/* Request modifiers - transform the request URL */
+function tmdbRequestModifier(url){return url.replace(/\?language=[a-z]{2}(-[A-Z]{2})?|$/, '?language=en');}
+
+function MPExtension() {
+/* Base class for the MoviePilot Rating Extension
+ * Sets up the Extension and lets you add new ratings from other websites
+ */
+    var ratingAnchor; //Div element. Hook point for children, especially ratings containers
+    var checkboxes = []; //Collection of Checkboxes; To show/hide different ratings.
+	
+	this.setupExtension = function() {
+		/* Setting up the extension
+		* Creation of control elements
+		*/
+	   
+	   if(!fixMPLayout()) {
+		   return false;
+	   }
+		var bewertung = document.getElementsByClassName('forecastcount')[0];
+		var parent = bewertung.parentNode;
+
+		var ratingExtensionDiv = createElementWithId('div', 'ratingExtension');
+		var extRatingsDiv = createElementWithId('div', 'extRatings');
+		var ratingExtensionControlDiv = createElementWithId('div', 'ratingExtControl');
+		var hr1 = document.createElement('hr');
+		var hr2 = document.createElement('hr');
+		var toggleContentButton = createElementWithId('span', 'toggleContentButton');
+		var showSettingsButton = createElementWithId('span', 'settingsButton');
+
+        ratingExtensionControlDiv.style.margin = '0px 0px 0px 25px';
+        toggleContentButton.style.color = '#9C9C9C';
+		toggleContentButton.style.cursor = 'pointer';
+
+		if(getInfoFromLocalStorage(C_SHOWRATINGS)){ //Ask local storage if the ratings should be visible and which text should be displayed
+			extRatingsDiv.style.display = 'inline';
+            toggleContentButton.innerHTML = 'Externe Bewertungen verbergen';
+		} else {
+			extRatingsDiv.style.display = 'none';
+            toggleContentButton.innerHTML = 'Externe Bewertungen anzeigen';
+		}
+        toggleContentButton.onclick = onToggleContentButtonClick;
+
+		showSettingsButton.style.color = '#9C9C9C';
+		showSettingsButton.style.cursor = 'pointer';
+		showSettingsButton.innerHTML = 'Einstellungen';
+		showSettingsButton.onclick = onSettingButtonClick;
+
+		hr1.style.margin = '5px 0px 5px 0px';
+		hr2.style.margin = '5px 0px 5px 0px';
+
+		ratingExtensionDiv.appendChild(hr1);
+		ratingExtensionDiv.appendChild(extRatingsDiv);
+		ratingExtensionDiv.appendChild(hr2);
+		ratingExtensionControlDiv.appendChild(toggleContentButton);
+		ratingExtensionControlDiv.appendChild(document.createTextNode(' | '));
+		ratingExtensionControlDiv.appendChild(showSettingsButton);
+		ratingExtensionDiv.appendChild(ratingExtensionControlDiv);
+		parent.insertBefore(ratingExtensionDiv, bewertung.nextSibling);
+
+		ratingAnchor = extRatingsDiv;
+		return true;
+	};
+	
+	var fixMPLayout = function() {
+	/* Modifies MPs structure - all ratings have to look alike... */
+		var userAction = document.getElementsByClassName('movie_user_action')[0];
+		var criticsCount = document.getElementsByClassName('criticscount')[0];
+		var contentCount = document.getElementsByClassName('contentcount')[0];
+		var huge = document.getElementsByClassName('huge');
+		var quite = document.getElementsByClassName('quite');
+		
+		if(userAction === null || criticsCount === null || contentCount === null || huge === null || quite === null) {
+			if(DEBUG_MODE) {
+				console.log("MP-Rating-Extension: Function fixMPLayout. Structure changed.");
+			}
+			return false;
+		}
+		
+		userAction.style.width   = "180px";
+		userAction.style.margin  = "0px 25px 0px 25px";
+		userAction.style.padding = "0px";
+		userAction.style.float   = "left";
+		
+		criticsCount.style.width   = "180px";
+		criticsCount.style.margin  = "0px 25px 0px 25px";
+		criticsCount.style.padding = "0px";
+		criticsCount.style.float   = "left";
+		
+		contentCount.style.width   = "180px";
+		contentCount.style.margin  = "0px 25px 0px 25px";
+		contentCount.style.padding = "0px";
+		contentCount.style.float   = "left";
+		
+		for (i = 0; i < huge.length; i++) {
+			huge[i].style.width   = "35px";
+			huge[i].style.margin  = "10px 3px 0px 0px";
+			huge[i].style.padding = "0px";
+			huge[i].style.float   = "left";
+			huge[i].style.textAlign   = "center";
+		}
+		
+		for (i = 0; i < quite.length; i++) {
+			quite[i].style.margin  = "0px";
+			quite[i].style.padding = "0px";
+			quite[i].style.float   = "left";
+		}
+		
+		return true;
+	};
+	
+	this.appendNewContainer = function(id) {
+    /* Adding a new rating container */
+		ratingAnchor.appendChild(createElementWithId('div', id));
+		return this;
+	};
+	
+	var createElementWithId = function(element, id) {
+    /* Ceating a new HTML element with an ID */
+        var newDiv = document.createElement(element);
+		newDiv.id = id;
+		return newDiv;
+	};
+
+	var onToggleContentButtonClick = function() {
+    /* Handler for Click Event - toggleContentButton */
+		var content = document.getElementById('extRatings');
+		var button = document.getElementById('toggleContentButton');
+		if(content.style.display == 'inline') { //toogling button description and local storage information
+			content.style.display = 'none';
+			button.innerHTML = 'Externe Bewertungen anzeigen';
+			setInfoInLocalStorage(C_SHOWRATINGS, false);
+		} else {
+			content.style.display = 'inline';
+			button.innerHTML ='Externe Bewertungen verbergen';
+			setInfoInLocalStorage(C_SHOWRATINGS, true);
+		}
+	};
+
+	var onSettingButtonClick = function() {
+		/* Handler for Click Event - settingsButton
+		* Creates and shows the settings on demand
+	   */
+		var overlay = document.getElementById('overlay');
+		if(overlay !== null) {
+			overlay.style.visibility = 'visible';
+		} else {
+			overlay = addSettingsOverlay();
+			document.getElementById('ratingExtension').appendChild(overlay);
+			overlay.style.visibility = 'visible';
+		}
+	};
+
+	var addSettingsOverlay = function() {
+		/* Creation of the settings for the extension */
+		var overlayDiv = document.createElement('div');
+		var overlayContentDiv = document.createElement('div');
+		var exitButton = document.createElement('a');
+
+		overlayDiv.id               = 'overlay';
+		overlayDiv.style.visibility = 'hidden';
+		overlayDiv.style.position   = 'absolute';
+		overlayDiv.style.left       = '0px';
+		overlayDiv.style.top        = '0px';
+		overlayDiv.style.width      = '100%';
+		overlayDiv.style.height     = '100%';
+		overlayDiv.style.textAlign  = 'center';
+		overlayDiv.style.zIndex     = '1000';
+
+		overlayContentDiv.style.width           = '300px';
+		overlayContentDiv.style.margin          = '100px auto';
+		overlayContentDiv.style.backgroundColor = '#fff';
+		overlayContentDiv.style.border          = 'solid #000';
+		overlayContentDiv.style.padding         = '15px';
+		overlayContentDiv.style.textAlign       = 'left';
+
+		exitButton.innerHTML = 'Einstellungen schließen';
+		exitButton.onclick = function() {document.getElementById('overlay').style.visibility = 'hidden';};
+
+        for(var i = 0; i < checkboxes.length; i++) {
+            overlayContentDiv.appendChild(checkboxes[i]);
+        }
+
+		overlayContentDiv.appendChild(exitButton);
+		overlayDiv.appendChild(overlayContentDiv);
+		return overlayDiv;
+	};
+    
+    this.appendNewCheckbox = function(id, description){
+	/* Add a new checkbox to the settings overlay
+	 * Checking/unchecking it will show/hide a Div container with the ID <id>
+	 */
+        checkboxes.push(getCheckBoxFor(id, description));
+        return this;
+    };
+
+	var getCheckBoxFor = function(id, infoText) {
+		/* Creation of a chekbox
+		 * Registers its <id> in the local storage for future access
+		 */
+		var label = document.createElement('label');
+		var checkBox = document.createElement('input');
+
+		label.appendChild(checkBox);
+		label.appendChild(document.createTextNode(' '+infoText));
+		label.appendChild(document.createElement('br'));
+
+		checkBox.id = id+'CheckBox';
+		checkBox.type = 'checkbox';
+		checkBox.checked = getInfoFromLocalStorage(id);
+		checkBox.onchange = function() {
+			setInfoInLocalStorage(id, this.checked);
+			if(this.checked) {
+				document.getElementById(id).style.display = 'inline';
+			} else {
+				document.getElementById(id).style.display = 'none';
+			}
+		};
+		return label;
+	};
+    
+    this.getMovieData = function() {
+    /* Get important inforation from the MP website: Movie titles, year */
+		var movieHeadline = document.getElementsByClassName('movie--headline');
+		var movieData = document.getElementsByClassName('movie--data');
+		var movieDataClearfix = document.getElementsByClassName('movie--data clearfix');
+		
+		if(movieHeadline === null || movieData === null || movieDataClearfix === null) {
+			if(DEBUG_MODE) {
+				console.log("MP-Rating-Extension: Function getMovieData. Structure changed.");
+			}
+			return null;
+		}
+		
+		var titles = [];
+		titles.push(Refinery.refineString(movieHeadline[0].innerHTML));	//MP movie title
+        titles = titles.concat(getMovieAliases(movieData[0].children[0].innerHTML)); //MP alternative titles
+		
+		var i = 0;
+		do{	//Fetch movie year
+			i++;
+			year = movieDataClearfix[0].children[i].innerHTML;
+		} while (year.match(/\d\d\d\d/) === null && i < 5);
+		return [titles, year];
+	};
+
+	var getMovieAliases = function(aliasString) {
+    /* Get movie aliases from a string */
+        var aliases = aliasString.split(/\s?\/\sAT:\s?|\s?;\s?|\s?\/\s?/g); // Usual delimiters are '\ AT:', ';' and '/'
+		return aliases;
+	};
+
+	this.addRatingToContainer = function(containerId, rating) {
+	/* Append a rating to its container
+     * Choosing a specific container for every rating creates a steady sequence
+     */
+		document.getElementById(containerId).appendChild(rating);
+	};
+}
+
+
+function Rating () {
+/* Rating class
+ * Search automation for ratings of different movie websites
+ * You can either use the rating Google provides on their results or write your own scrapper for a rating from any website and "hook" it to this rating
+ */
+	var ratingSite="";	//Required; Full name of the website
+	var ratingSiteAbbr = ""; //Required; Abbrivation of the websites name
+	var description = "";	//(Only for the type Info) Short description of the website
+	var websiteURL=""; //Required; URL of the website; Used for the search
+	var ratingRange="10"; //[Used by standard Google rating scrapper] (Default) Range of the Rating
+	var ratingId="";	//[Used by standard Google rating scrapper] Required; ID of the Div-container where the rating will be added
+	var ratingDivId=""; //[Used by standard Google rating scrapper] Required; ID of the ratings Div-container
+	var googleRequest="";
+    var googleRequestModifier = function(url) {return url;}; 	//Modify Googles request URL
+	var ratingRequest="";
+    var ratingRequestModifier = function(url) {return url;};	//Modify the request URL of the rating website
+	var ratingSourceTypes = {EXTERN: 0, GOOGLE: 1, INFO:2};		//Type of the rating; EXTERN for own rating scrapper, GOOGLE for standard Google scrapper, INFO for a information website without rating
+	var ratingSourceType = ratingSourceTypes.EXTERN;		//Current type of the rating
+    var numberOfResultsIncluded = 1;	//Number of Google results that should be included in a search
+    var excludeUnplausibleYear = false;	//Should a result be excluded if the movie years aren't matching?
+    this.callback = null;	//Used by the class; Do not modify...
+	var googleHookFunction = null; //Hooked function; Will be called after a successfull google request
+	var responseSiteHookFunction = null; //Hooked function; Will be called after a successfull rating website request
+	var scrapperFunction = null;	//Scrapper function
+	var estCorrectness = Rating.correctness.LOW;	//Estimated correctness of a rating result
+	
+	var SEARCH_GOOGLE_RESULT_INFO = false;	//Search Googles infos to a result for matches too
+	var LINK_WEBSITES = true;	//Link the websites
+	var LET_ME_GOOGLE_THAT = true;	//Link the Google request if a search is failing
+	var REQ_TIMEOUT = 10000;
+	var REQ_SYNCHRONOUS = false;
+	
+    
+    this.ratingSite = function(string) {ratingSite = string; return this;};
+    this.ratingSiteAbbr = function(string) {ratingSiteAbbr = string; return this;};
+    this.description = function(string) {description = string; return this;};
+    this.ratingRange = function(string) {ratingRange = string; return this;};
+    this.ratingId = function(string) {ratingId = string; return this;};
+    this.ratingDivId = function(string) {ratingDivId = string; return this;};
+    this.websiteURL = function(string) {websiteURL = string; return this;};
+    this.googleRequestModifier = function(func) {googleRequestModifier = func; return this;};
+    this.ratingRequestModifier = function(func) {ratingRequestModifier = func; return this;};
+	this.externRating = function() {ratingSourceType = ratingSourceTypes.EXTERN; return this;};
+	this.googleRating = function() {ratingSourceType = ratingSourceTypes.GOOGLE; return this;};
+	this.info = function() {ratingSourceType = ratingSourceTypes.INFO; return this;};
+    this.numberOfResultsIncluded = function(number) {numberOfResultsIncluded = number; return this;};
+    this.excludeUnplausibleYear = function(boolean) {excludeUnplausibleYear = boolean; return this;};
+    this.googleHookFunction = function(func) {googleHookFunction = func; return this;};
+    this.responseSiteHookFunction = function(func) {responseSiteHookFunction = func; return this;};
+    this.scrapperFunction = function(func) {scrapperFunction = func; return this;};
+    
+	this.getRating = function() {
+	/* Kick off the search */
+		googleRequest = "https://www.google.de/search?q=site:"+websiteURL+"+"+Rating.movieAliases[0].replace(/ /g,"+")+"+"+Rating.movieYear;
+        googleRequest = googleRequestModifier(googleRequest);
+		if(DEBUG_MODE) {
+			console.log("MP-Rating-Extension: "+ratingSiteAbbr+": Google request: "+googleRequest);
+		}
+        this.callback = this.handleGoogleResponse;	// Setting a callback function; Will be called in an anonymous function in sendRequest
+		this.sendRequest(googleRequest, this);
+	};
+	
+	this.handleGoogleResponse = function(request, response) {
+	/* Handler for Google response */
+        if(DEBUG_MODE) {
+				console.log("MP-Rating-Extension: "+ratingSiteAbbr+": Google request successfull.");
+        }
+		var googleHTML = Refinery.refineHTML(response.responseText);
+		var googleResult = this.returnPlausibleGoogleResult(googleHTML, websiteURL);
+		if(googleResult !== null) {
+            if(DEBUG_MODE) {
+				console.log("MP-Rating-Extension: "+ratingSiteAbbr+": Plausible google result found.");
+			}
+			ratingRequest = googleResult[0];
+			if(ratingSourceType == ratingSourceTypes.GOOGLE) {
+				var rating = this.getRatingByGoogle(googleResult[1], ratingSite, ratingRange, ratingDivId);
+				if(LINK_WEBSITES) {
+					MPExtension.addRatingToContainer(ratingId, MPRatingFactory.wrapRatingWithLink(rating, ratingRequest));
+				} else {
+					MPExtension.addRatingToContainer(ratingId, rating);
+				}
+			} else if(ratingSourceType == ratingSourceTypes.INFO) {
+                var info = MPRatingFactory.buildInfo(ratingSite,description, estCorrectness, ratingDivId);
+                MPExtension.addRatingToContainer(ratingId, MPRatingFactory.wrapRatingWithLink(info, ratingRequest));
+            } else {	//Type EXTERN
+                this.callback = this.handleRatingSiteResponse;
+                ratingRequest = ratingRequestModifier(ratingRequest);
+                if(DEBUG_MODE) {
+                    console.log("MP-Rating-Extension: "+ratingSiteAbbr+": Rating site request: "+ratingRequest);
+                }
+				this.sendRequest(ratingRequest, this);
+			}
+		} else {
+			if(DEBUG_MODE) {
+				console.log("MP-Rating-Extension: "+ratingSiteAbbr+": No plausible google result.");
+			}
+			if(googleHookFunction !== null) {
+				googleHookFunction();
+			}
+			if(LET_ME_GOOGLE_THAT) {
+				MPExtension.addRatingToContainer(ratingId, MPRatingFactory.wrapRatingWithLink(MPRatingFactory.getNotFoundRating(ratingSite, ratingRange, ratingDivId), request));
+			} else {
+				MPExtension.addRatingToContainer(ratingId, MPRatingFactory.getNotFoundRating(ratingSite, ratingRange, ratingDivId));
+			}
+		}
+	};
+	
+	this.handleRatingSiteResponse = function(request, response) {
+	/* Handler for rating site response */
+        if(DEBUG_MODE) {
+				console.log("MP-Rating-Extension: "+ratingSiteAbbr+": Rating site request successfull.");
+        }
+		var ratingSiteHTML = Refinery.refineHTML(response.responseText);
+		if(responseSiteHookFunction !== null) {
+			responseSiteHookFunction(ratingSiteHTML);
+		}
+        if(scrapperFunction !== null) {
+            var rating = scrapperFunction(ratingSiteHTML, estCorrectness);
+            if(LINK_WEBSITES) {
+                MPExtension.addRatingToContainer(ratingId, MPRatingFactory.wrapRatingWithLink(rating, request));
+            } else {
+                MPExtension.addRatingToContainer(ratingId, rating);
+            }
+        } else {
+            console.log("MP-Rating-Extension: "+ratingSiteAbbr+": No scrapper function defined.");
+        }
+	};
+
+	this.returnPlausibleGoogleResult = function(googleHTML, fqdmRegExp) {
+	/* Result-Scrapper for Google
+     * Checks the results for plausibility
+     *
+     * return   Array: Link zum Ergebnis und HTML des Google-Ergebnisses oder null
+     */
+        if(DEBUG_MODE && VERBOSE) {
+            console.log("MP-Rating-Extension: "+ratingSiteAbbr+": "+numberOfResultsIncluded+" results included in search.");
+        }
+        var results = HTMLExtractor.extractMultipleDivs(googleHTML, '<div class="g"', numberOfResultsIncluded);
+        for(var k = 0; k < results.length; k++) {
+            result = results[k];
+            if(result === null) {return null;}
+            var link = HTMLExtractor.extractFirstLink(result);
+            if(link === null) {return null;}
+
+            if(!excludeUnplausibleYear || link.search(Rating.movieYear) > 0) {
+                var info;
+                if(SEARCH_GOOGLE_RESULT_INFO) {
+                    info = HTMLExtractor.extractSpan(result, '<span class="st"');
+                    if(info === null) {return null;}
+                }
+                var url = link.match(/"http.*?"/);
+                if(url === null) {return null;}
+                url = url[0].replace(/"/g,"");
+
+                //Try to match movie titles with the results (and result infos)
+                var regExpMovieData = Rating.movieAliases;
+                for(var j = 0; j < regExpMovieData.length; j++) {
+                    regExpMovieData[j] =regExpMovieData[j].replace(/(- |:)/g, '');
+                    var regExpMovieDataSplits = regExpMovieData[j].split(' ');
+                    var foundCounter = 0;
+                    // Heuristic - at least half of the movie titles words have to be found in a result
+                    for(var i = 0; i < regExpMovieDataSplits.length; i++) {
+                        var regExp = new RegExp('(^|\\s|>)'+regExpMovieDataSplits[i]+'(\\s|$)', 'i');
+                        if(link.search(regExp) >= 0 || (SEARCH_GOOGLE_RESULT_INFO && info.search(regExp) >= 0)) {
+                            foundCounter++;
+                        }
+                    }
+                    if(url.search(fqdmRegExp) >= 0 && foundCounter >= (regExpMovieDataSplits.length/2)) {
+                        var correctnessIndicator = foundCounter/regExpMovieDataSplits.length; //Correctness indicator;
+                        if(DEBUG_MODE && VERBOSE) {
+                            console.log("MP-Rating-Extension: "+ratingSiteAbbr+": Result "+(k+1)+" was matched (1-"+numberOfResultsIncluded+").");
+                            console.log("MP-Rating-Extension: "+ratingSiteAbbr+": Correctness: "+(foundCounter/regExpMovieDataSplits.length)+".");
+                        }
+                        if(correctnessIndicator == 1) { //all words were found
+                            estCorrectness = Rating.correctness.HIGH;
+                        } else if(correctnessIndicator < 1) { //less were found (not a perfect match)
+                            estCorrectness = Rating.correctness.MIDDLE;
+                        }
+                        return [url, result];
+                    } else if (DEBUG_MODE && VERBOSE) {
+                        console.log("MP-Rating-Extension: "+ratingSiteAbbr+": Result "+(k+1)+" was excluded: No title match.");
+                    }
+                }
+            } else {
+                if(DEBUG_MODE && VERBOSE) {
+                    console.log("MP-Rating-Extension: "+ratingSiteAbbr+": Result "+(k+1)+" was excluded: Wrong Year.");
+                }
             }
         }
-
-        var replaceOrder = movieData[0][0];
-        movieData[0][0] = tmdbResult;
-        movieData[0].push(replaceOrder);
-    }
-    requestRatings(); // Rating-Suche starten
-
-    var rating = getTheMovieDBRating(tmdbHTML, 'TMDb', '10', C_ID_TMDBRATING);
-    if(LINK_WEBSITES) {
-        addRating('tmdb', wrapRatingWithLink(rating, request));
-    } else {
-        addRating('tmdb', rating);
-    }
+		return null;
+	};
+	
+	this.getRatingByGoogle = function(googleHTML, source, ratingRange, id) {
+	/* Standard scrapper for Googles ratings */
+		googleHTML = Refinery.refineHTML(googleHTML);
+		var ratingHTML = HTMLExtractor.extractDiv(googleHTML, '<div class="f slp"');
+		if(ratingHTML !== null) {
+			ratingHTML = ratingHTML.match(/\d,?\d?\/10 - \d(\d|\.)*/);
+			if(ratingHTML !== null) {
+				ratingHTML = ratingHTML[0].split('-');
+				var rating = ratingHTML[0].trim();
+				var ratingCount =  ratingHTML[1].trim();
+				return MPRatingFactory.buildRating(Refinery.refineRating(rating), source, Refinery.refineRatingCount(ratingCount), ratingRange, estCorrectness, id);
+			}
+		}
+		return MPRatingFactory.getNotYetRating(source, ratingRange, id);
+	};
+	
+	this.sendRequest = function(request, ratingObject) {
+	/* Absetzen eines Requests
+	 *
+	 * request      Ziel-URL mit Request
+	 * source       Anzeige-Information
+	 */
+		if (this.REQ_SYNCHRONOUS) {  //synchronous or asynchronous
+			var response = GM_xmlhttpRequest({
+				method: 'GET',
+				url: request,
+				synchronous: this.REQ_SYNCHRONOUS,
+				timeout: this.REQ_TIMEOUT,
+				ontimeout: function(response) {console.log("Timeout(MP-Rating-Extension):  "+request);}
+			});
+			if(response.status == 200) {
+				ratingObject.callback(request, response);
+			} else {
+				alert("Error: No synchornous operation.");
+			}
+		} else {
+			GM_xmlhttpRequest({
+				method: 'GET',
+				url: request,
+				synchronous: this.REQ_SYNCHRONOUS,
+				timeout: this.REQ_TIMEOUT,
+				onreadystatechange: function(response) {
+					if(response.status == 200 && response.readyState == 4) { //Successfull request
+						ratingObject.callback(request, response);
+					} else if(response.readyState == 4 && response.status >= 500 && response.status < 600) { //Server error
+                        if(response.finalUrl.match(/(ipv4|ipv6).google.(de|com)\/sorry/) !== null) { //Blocked by Google; Too many requests
+                            MPExtension.appendNewContainer('google');
+                            var rating = MPRatingFactory.wrapRatingWithLink(MPRatingFactory.buildInfo('Google blocked','Click and enter captcha to unlock', 'google'), request);
+                            MPExtension.addRatingToContainer('google', rating);
+                            alert("MP-Rating-Extension: Google might block your requests.");
+                        } else { //Default error
+                            var rating = MPRatingFactory.wrapRatingWithLink(MPRatingFactory.getErrorRating(ratingSite, ratingRange, ratingDivId), request);
+                            MPExtension.addRatingToContainer(ratingId, rating);
+                        }
+                    }
+				}
+			});
+		}
+	};
 }
 
-function getTheMovieDBRating(tmdbHTML, source, ratingRange, id) {
-    /* Rating-Scrapper fuer TheMovieDB */
-    var tmdb_div = document.createElement('div');
-    tmdb_div.id = id;
-
-    var ratingSpan = extractSpan(tmdbHTML, '<span class="rating"');
-    if(ratingSpan !== null) {
-        var tmdbRating = ratingSpan.match(/\d\.?\d?\d?/)[0];
-        tmdb_div.appendChild(buildRating(refineRating(tmdbRating), 'TMDB', "X", ratingRange, id)); // RatingCount nicht mehr oeffentlich?
-    } else {
-        tmdb_div.appendChild(getNotYetRating('TMDB', ratingRange, id));
-    }
-
-    return tmdb_div;
-}
-
-function handleGoogleWikipediaResponse(request, response) {
-    /* Google-Handler - Prueft auf plausible Ergebnisse und verweist ggf. auf Wikipdia-Eintrag*/
-    var fqdmRegExp = "wikipedia.org";
-    var googleHTML = response.responseText;
-    var googleResult = returnPlausibleGoogleResult(googleHTML,fqdmRegExp);
-    if(googleResult !== null) {
-        var movieURL = googleResult[0];
-        if(LINK_WEBSITES) {
-            var info = buildInfo('Wikipedia', 'The Free', 'Encyclopedia', C_ID_WIKIINFO);
-            addRating('info', wrapRatingWithLink(info, movieURL));
-        }
-    }
-}
-
-function handleGoogleIMDBResponse(request, response) {
-    /* Google-Handler - Prueft auf plausible Ergebnisse und stoesst ggf weitere Request an*/
-    var fqdmRegExp = "www.imdb.com";
-    var googleHTML = response.responseText;
-    var googleResult = returnPlausibleGoogleResult(googleHTML,fqdmRegExp);
-    if(googleResult !== null) {
-        var movieURL = googleResult[0];
-        var rating = getRatingByGoogle(googleResult[1], 'imdb', '10', C_ID_IMDBRATING);
-        if(LINK_WEBSITES) {
-            addRating('imdb', wrapRatingWithLink(rating, movieURL));
-        } else {
-            addRating('imdb', rating);
-        }
-    } else {
-        if(LET_ME_GOOGLE_THAT) {
-            addRating('imdb', wrapRatingWithLink(getNotFoundRating('imdb', '10', C_ID_IMDBRATING), request));
-        } else {
-            addRating('imdb', getNotFoundRating('imdb', '10', C_ID_IMDBRATING));
-        }
-    }
-}
-
-function getRatingByGoogle(googleHTML, source, ratingRange, id) {
-    /* Allgemeiner Scrapper fuer Bewertung, angezeigt von Google */
-    googleHTML = refineHTML(googleHTML);
-    var ratingHTML = extractDiv(googleHTML, '<div class="f slp"');
-    if(ratingHTML !== null) {
-        ratingHTML = ratingHTML.match(/\d,?\d?\/10 - \d(\d|\.)*/);
-        if(ratingHTML !== null) {
-            ratingHTML = ratingHTML[0].split('-');
-            var rating = ratingHTML[0].trim();
-            var ratingCount =  ratingHTML[1].trim();
-            return buildRating(refineRating(rating), source, refineRatingCount(ratingCount), ratingRange, id);
-        }
-    }
-    return getNotYetRating(source, ratingRange, id);
-}
-
-function handleGoogleRTResponse(request, response) {
-    /* Google-Handler - Prueft auf plausible Ergebnisse und stoesst ggf weitere Request an*/
-    var fqdmRegExp = "www.rottentomatoes.com";
-    var googleHTML = response.responseText;
-    var googleResult = returnPlausibleGoogleResult(googleHTML,fqdmRegExp);
-    if(googleResult !== null) {
-        var movieURL = googleResult[0];
-        sendRequest(movieURL, handleRTResponse);
-    } else {
-        if(LET_ME_GOOGLE_THAT) {
-            addRating('rt', wrapRatingWithLink(getNotFoundRating('rotten tomatoes', '100', C_ID_RTRATINGS), request));
-        } else {
-            addRating('rt', getNotFoundRating('rotten tomatoes', '100', C_ID_RTRATINGS));
-        }
-    }
-}
-
-function handleRTResponse(request, response) {
-    /* Rotten-Tomatoes-Handler - Hinzufuegen (verlinkter) Bewertungen */
-    var rtHTML = response.responseText;
-    var ratings = getRTRatings(rtHTML);
-    if(LINK_WEBSITES) {
-        addRating('rt', wrapRatingWithLink(ratings, request));
-    } else {
-        addRating('rt', ratings);
-    }
-}
-
-function getRTRatings(rtHTML) {
-    /* Rating-Scrapper fuer Rotten Tomatoes */
-
+function rtRatingScrapper(rtHTML, estCorrectness) {
+/* Rating-Scrapper for Rotten Tomatoes */
     var rt_div = document.createElement('div');
     rt_div.id = C_ID_RTRATINGS;
+    var encodedRtHTML = rtHTML;
 
-    var encodedRtHTML = refineHTML(rtHTML);
-
-    // Kritiker
-    var critStatsHTML = extractDiv(encodedRtHTML, '<div id="scoreStats"');
+    // Critics
+    var critStatsHTML = HTMLExtractor.extractDiv(encodedRtHTML, '<div id="scoreStats"');
     if(critStatsHTML !== null) {
         var critStats  = critStatsHTML.split("/div");
         var critAvrRating   = critStats[0].match(/\d\.?\d?/);
@@ -675,306 +640,437 @@ function getRTRatings(rtHTML) {
         var critRotten      = critStats[3].match(/\d(\d|,)*/)[0];
 
         if(critFresh !== null && critRotten !== null && critRatingCount !== null) {
-            rt_div.appendChild(buildRating(Math.round((critFresh/critRatingCount)*100), 'RT Tomatometer', refineRatingCount(critRatingCount), '100', C_ID_RTTOMATOMETER));
+            rt_div.appendChild(MPRatingFactory.buildRating(Math.round((critFresh/critRatingCount)*100), 'RT Tomatometer', Refinery.refineRatingCount(critRatingCount), '100', estCorrectness, C_ID_RTTOMATOMETER));
         } else {
-            rt_div.appendChild(getNotYetRating('RT Tomatometer', '100', C_ID_RTTOMATOMETER));
+            rt_div.appendChild(MPRatingFactory.getNotYetRating('RT Tomatometer', '100', C_ID_RTTOMATOMETER));
         }
         if(critAvrRating !== null && critRatingCount !== null) {
-            rt_div.appendChild(buildRating(critAvrRating, 'RT Kritiker', refineRatingCount(critRatingCount), '10', C_ID_RTCRITICSRATING));
+            rt_div.appendChild(MPRatingFactory.buildRating(critAvrRating, 'RT Kritiker', Refinery.refineRatingCount(critRatingCount), '10', estCorrectness, C_ID_RTCRITICSRATING));
         } else {
-            rt_div.appendChild(getNotYetRating('RT Kritiker', '100', C_ID_RTCRITICSRATING));
+            rt_div.appendChild(MPRatingFactory.getNotYetRating('RT Kritiker', '100', C_ID_RTCRITICSRATING));
         }
     } else {
-        rt_div.appendChild(getNotYetRating('RT Tomatometer', '100', C_ID_RTTOMATOMETER));
-        rt_div.appendChild(getNotYetRating('RT Kritiker', '10', C_ID_RTCRITICSRATING));
+        rt_div.appendChild(MPRatingFactory.getNotYetRating('RT Tomatometer', '100', C_ID_RTTOMATOMETER));
+        rt_div.appendChild(MPRatingFactory.getNotYetRating('RT Kritiker', '10', C_ID_RTCRITICSRATING));
     }
-
     // Audience
     if(encodedRtHTML.search('<div class="wts media') < 0) {
-        var audStatsHTML = extractDiv(encodedRtHTML, '<div class="audience-info');
-        if(audStatsHTML !== null && divIsNotEmpty(audStatsHTML)) {
+        var audStatsHTML = HTMLExtractor.extractDiv(encodedRtHTML, '<div class="audience-info');
+        if(audStatsHTML !== null && HTMLExtractor.divIsNotEmpty(audStatsHTML)) {
             audStatsHTML = audStatsHTML.replace(/%(\d|[ABCDEF])(\d|[ABCDEF])/g,"");
             var audStats  = audStatsHTML.split("/div");
             var audAvrRating   = audStats[0].match(/\d\.?\d?/)[0];
             var audRatingCount = audStats[1].match(/\d(\d|,)*/)[0];
             if(audAvrRating !== null && audRatingCount !== null) {
-                rt_div.appendChild(buildRating(refineRating(audAvrRating), 'RT Community', refineRatingCount(audRatingCount), '5', C_ID_RTCOMMUNITYRATING));
+                rt_div.appendChild(MPRatingFactory.buildRating(Refinery.refineRating(audAvrRating), 'RT Community', Refinery.refineRatingCount(audRatingCount), '5', estCorrectness, C_ID_RTCOMMUNITYRATING));
             }
         }
     } else {
-        rt_div.appendChild(getNotYetRating('RT Community', '5', C_ID_RTCOMMUNITYRATING));
+        rt_div.appendChild(MPRatingFactory.getNotYetRating('RT Community', '5', C_ID_RTCOMMUNITYRATING));
     }
     return rt_div;
 }
 
-function handleGoogleMCResponse(request, response) {
-    /* Google-Handler - Prueft auf plausible Ergebnisse und stoesst ggf weitere Request an*/
-    var fqdmRegExp = "www.metacritic.com";
-    var googleHTML = response.responseText;
-    var googleResult = returnPlausibleGoogleResult(googleHTML,fqdmRegExp);
-    if(googleResult !== null) {
-        var movieURL = googleResult[0];
-        sendRequest(movieURL, handleMCResponse);
-    } else {
-        if(LET_ME_GOOGLE_THAT){
-            addRating('mc', wrapRatingWithLink(getNotFoundRating('metacritic', '100', C_ID_MCRATINGS), request));
-        } else {
-            addRating('mc', getNotFoundRating('metacritic', '100', C_ID_MCRATINGS));
-        }
-    }
-}
-
-function handleMCResponse(request, response) {
-    /* Rotten-Tomatoes-Handler - Hinzufuegen (verlinkter) Bewertungen */
-    var mcHTML = response.responseText;
-    var ratings = getMCRatings(mcHTML);
-    if(LINK_WEBSITES) {
-        addRating('mc', wrapRatingWithLink(ratings, request));
-    } else {
-        addRating('mc', ratings);
-    }
-}
-
-function getMCRatings(mcHTML) {
+function mcRatingScrapper(mcHTML, estCorrectness) {
+/* Rating-Scrapper for Metacritic */
     var mc_div = document.createElement('div');
     mc_div.id = C_ID_MCRATINGS;
-
-    var encodedHTML = refineHTML(mcHTML);
-    var metascoreDiv = extractDiv(encodedHTML, '<div class="score_summary');
+    var encodedHTML = mcHTML;
+    var metascoreDiv = HTMLExtractor.extractDiv(encodedHTML, '<div class="score_summary');
     if(metascoreDiv !== null) {
         var mcCritRatingHTML = metascoreDiv.match(/ratingValue">\d\d?\d?/);
-        var mcCritRatingCountHTML = extractDiv(metascoreDiv, '<div class="summary');
+        var mcCritRatingCountHTML = HTMLExtractor.extractDiv(metascoreDiv, '<div class="summary');
         if(mcCritRatingHTML !== null && mcCritRatingCountHTML !== null) {
             var mcCritRating = mcCritRatingHTML[0].match(/\d\d?\d?/)[0];
             var mcCritRatingCount = mcCritRatingCountHTML.match(/\d(\d)*/)[0];
-            mc_div.appendChild(buildRating(refineRating(mcCritRating), 'MC Metascore', refineRatingCount(mcCritRatingCount), '100', C_ID_MCCRITICSRATING));
+            mc_div.appendChild(MPRatingFactory.buildRating(Refinery.refineRating(mcCritRating), 'MC Metascore', Refinery.refineRatingCount(mcCritRatingCount), '100', estCorrectness, C_ID_MCCRITICSRATING));
         } else {
-            mc_div.appendChild(getNotYetRating('MC Metascore', '100', C_ID_MCCRITICSRATING));
+            mc_div.appendChild(MPRatingFactory.getNotYetRating('MC Metascore', '100', C_ID_MCCRITICSRATING));
         }
     } else {
-        mc_div.appendChild(getNotYetRating('MC Metascore', '100', C_ID_MCCRITICSRATING));
+        mc_div.appendChild(MPRatingFactory.getNotYetRating('MC Metascore', '100', C_ID_MCCRITICSRATING));
     }
 
-    var userscoreDiv = extractDiv(encodedHTML, '<div class="userscore_wrap');
+    var userscoreDiv = HTMLExtractor.extractDiv(encodedHTML, '<div class="userscore_wrap');
     if(userscoreDiv !== null) {
         var mcComRatingHTML = userscoreDiv.match(/metascore_w(.)*?\d\.?\d?/);
-        var mcComRatingCountHTML = extractDiv(userscoreDiv, '<div class="summary');
+        var mcComRatingCountHTML = HTMLExtractor.extractDiv(userscoreDiv, '<div class="summary');
         if(mcComRatingHTML !== null && mcComRatingCountHTML !== null) {
             var mcComRating = mcComRatingHTML[0].match(/\d\.?\d?/)[0];
             var mcComRatingCount = mcComRatingCountHTML.match(/\d\d*/)[0];
-            mc_div.appendChild(buildRating(mcComRating, 'MC User Score', refineRatingCount(mcComRatingCount), '10', C_ID_MCCOMMUNITYRATING));
+            mc_div.appendChild(MPRatingFactory.buildRating(mcComRating, 'MC User Score', Refinery.refineRatingCount(mcComRatingCount), '10', estCorrectness, C_ID_MCCOMMUNITYRATING));
         } else {
-            mc_div.appendChild(getNotYetRating('MC User Score', '10', C_ID_MCCOMMUNITYRATING));
+            mc_div.appendChild(MPRatingFactory.getNotYetRating('MC User Score', '10', C_ID_MCCOMMUNITYRATING));
         }
     } else {
-        mc_div.appendChild(getNotYetRating('MC User Score', '10', C_ID_MCCOMMUNITYRATING));
+        mc_div.appendChild(MPRatingFactory.getNotYetRating('MC User Score', '10', C_ID_MCCOMMUNITYRATING));
     }
     return mc_div;
 }
 
-function returnPlausibleGoogleResult(googleHTML, fqdmRegExp) {
-    /* Result-Scrapper fuer Google
-   * Ueberprueft erstes Ergebnis
-   *
-   * return   Array: Link zum Ergebnis, HTML des Google-Ergebnisses oder null
-   */
-    var encodedGoogleHTML = refineHTML(googleHTML);
-    var result = extractDiv(encodedGoogleHTML, '<div class="g"');
-    var link = extractFirstLink(result);
-    var info = extractSpan(result, '<span class="st"');
-    var url = link.match(/"http.*?"/)[0];
-    url = url.replace(/"/g,"");
-
-    // Titel auf Inhalt pruefen
-    var regExpMovieData = movieData[0];
-    for(var j = 0; j < regExpMovieData.length; j++) {
-        regExpMovieData[j] = refineHTML(regExpMovieData[j]);
-        regExpMovieData[j] =regExpMovieData[j].replace(/(- |:)/g, '');
-        var regExpMovieDataSplits = regExpMovieData[j].split(' ');
-        var foundCounter = 0;
-        // Heuristik - Gefundener Titel muss mindestens die Haelfte der gesuchten Woerter enthalten
-        for(var i = 0; i < regExpMovieDataSplits.length; i++) {
-            var regExp = new RegExp(regExpMovieDataSplits[i], 'i');
-            if(link.search(regExp) >= 0 || info.search(regExp) >= 0) {
-                foundCounter++;
+function tmdbRatingScrapper(tmdbHTML, estCorrectness) {
+/* Rating-Scrapper for TheMovieDB */
+    var tmdb_div = document.createElement('div');
+    tmdb_div.id = C_ID_TMDBRATING;
+    var ratingSpan = HTMLExtractor.extractSpan(tmdbHTML, '<span class="rating"');
+    if(ratingSpan !== null) {
+        var tmdbRating = ratingSpan.match(/\d\.?\d?\d?/)[0];
+        tmdb_div.appendChild(MPRatingFactory.buildRating(Refinery.refineRating(tmdbRating), 'TMDB', "?", 10, estCorrectness,  C_ID_TMDBRATING)); // RatingCount nicht mehr oeffentlich?
+    } else {
+        var ratingDiv = HTMLExtractor.extractDiv(tmdbHTML, '<div class="rating"');
+        if(ratingDiv !== null) {
+            var tmdbRating = ratingDiv.match(/>\d{1,2}\.?\d?</);
+            var tmdbRatingCount = ratingDiv.match(/ratingCount">\d*/);
+            if(tmdbRating !== null && tmdbRatingCount !== null) {
+                tmdbRating = tmdbRating[0].match(/\d{1,2}\.?\d?/)[0];
+                tmdbRatingCount = tmdbRatingCount[0].match(/\d*/)[0];
+                tmdb_div.appendChild(MPRatingFactory.buildRating(Refinery.refineRating(tmdbRating), 'TMDB', tmdbRatingCount, 10, estCorrectness, C_ID_TMDBRATING));
+            } else {
+                tmdb_div.appendChild(MPRatingFactory.getNotYetRating('TMDB', 10, C_ID_TMDBRATING));
             }
-        }
-        if(url.search(fqdmRegExp) >= 0 && foundCounter >= (regExpMovieDataSplits.length/2)) {
-            return [url, result];
-        }
-    }
-    return null;
-}
-
-function sendRequest(request, handler) {
-    /* Absetzen eines Requests
-   *
-   * request      Ziel-URL mit Request
-   * source       Anzeige-Information
-   * ratingRange  maximal moegliche Bewertung
-   */
-    if (REQ_SYNCHRONOUS) {  //synchron oder asynchron
-        var response = GM_xmlhttpRequest({
-            method: 'GET',
-            url: request,
-            synchronous: REQ_SYNCHRONOUS,   //synchron oder asynchron
-            timeout: REQ_TIMEOUT,
-            ontimeout: function(response) {alert("Timeout(MP-Rating-Extension):  "+request);}
-        });
-        if(response.status == 200) {
-            handler(request, response);
         } else {
-            alert("Error: No synchornous operation.");
+            tmdb_div.appendChild(MPRatingFactory.getNotYetRating('TMDB', 10, C_ID_TMDBRATING));
         }
-    } else {
-        GM_xmlhttpRequest({
-            method: 'GET',
-            url: request,
-            synchronous: REQ_SYNCHRONOUS,
-            timeout: REQ_TIMEOUT,
-            onreadystatechange: function(response) {
-                if(response.status == 200 && response.readyState == 4) {
-                    handler(request, response);
-                }
-            },
-            ontimeout: function(response) {alert("Timeout(MP-Rating-Extension): "+request);}
-        });
     }
+    return tmdb_div;
 }
 
-//---------REFINE-FUNCTIONS--------
-function refineTitle(title) {
-    /* Titel bearbeiten */
-    var refinedTitle = title.split("/ AT:")[0];  // Alternativer Titel weg
-    return refinedTitle;
+function MPRatingFactory() {
+/* Factory for MP elements */
+	this.buildRating = function(rating, source, ratingCount, range, estCorrectness, id) {
+	/* Rebuild the rating structure of MP to show external ratings */
+        var ratingWrapper = createWrapper(id);
+		var ratingValue = createValue(rating);
+        ratingWrapper.appendChild(ratingValue);
+		var ratingInfo = createInfo(source, ratingCount+" Bewertungen", "Skala 0 bis "+range);
+		ratingWrapper.appendChild(ratingInfo);
+		if(estCorrectness != Rating.correctness.LOW) {
+			var estimatedCorrectness = createEstCorrectness(estCorrectness);
+            ratingWrapper.appendChild(estimatedCorrectness);
+		}
+		return ratingWrapper;
+	};
+    
+    this.buildInfo = function(source, sourceInfo, estCorrectness, id) {
+	/* Rebuild the rating structure of MP to show external information */
+        var infoWrapper = createWrapper(id);
+        var infoValue = createValue("i");
+        infoWrapper.appendChild(infoValue);
+        var sourceInfoSplit = sourceInfo.split(/(^.{0,20} )/);
+        var infoInfo = createInfo(source, sourceInfoSplit[1], sourceInfoSplit[2]);
+        infoWrapper.appendChild(infoInfo);
+        if(estCorrectness != Rating.correctness.LOW) {
+			var estimatedCorrectness = createEstCorrectness(estCorrectness);
+            infoWrapper.appendChild(estimatedCorrectness);
+		}
+        return infoWrapper;
+    };
+	
+    var createWrapper = function(id) {
+	/* MPs rating wrapper*/
+        var wrapper = document.createElement('div');
+		wrapper.id            = id;
+		wrapper.className     = "criticscount";
+		wrapper.style.width   = "180px";
+		wrapper.style.margin  = "0px 25px 0px 25px";
+		wrapper.style.padding = "0px";
+		wrapper.style.float   = "left";
+		if(getInfoFromLocalStorage(id)) {
+			wrapper.style.display = 'inline';
+		} else {
+			wrapper.style.display = 'none';
+		}
+        return wrapper;
+    };
+    
+	var createValue = function(value) {
+	/* MPs rating */
+		var valueSpan = document.createElement('span');
+		valueSpan.className     = "huge";
+		valueSpan.innerHTML     = value;
+		valueSpan.style.width   = "35px";
+		valueSpan.style.margin  = "10px 3px 0px 0px";
+		valueSpan.style.padding = "0px";
+		valueSpan.style.float   = "left";
+		valueSpan.style.textAlign = "center";
+		return valueSpan;
+	};
+	
+	var createInfo = function(title, description, descriptionExp) {
+	/* MPs rating infos */
+		var info = document.createElement('div');
+		info.className     = "quite";
+		info.style.margin  = "0px";
+		info.style.padding = "0px";
+		info.style.float   = "left";
+        
+		var infoSource = document.createTextNode(title);
+		info.appendChild(infoSource);
+		info.appendChild(document.createElement('br'));
+
+		var infoDesc = document.createElement('span');
+		infoDesc.innerHTML = description;
+		info.appendChild(infoDesc);
+		info.appendChild(document.createElement('br'));
+
+		var infoDescExp = document.createElement('span');
+		infoDescExp.className = "small";
+		infoDescExp.innerHTML = descriptionExp;
+        info.appendChild(infoDescExp);
+		
+		return info;
+	};
+	
+	var createEstCorrectness = function(correctness) {
+	/* Display for the estimated correctness of a added rating */
+		var tooltipText = "Matching correctness is: ";
+        var estimationInfo = document.createElement('div');
+		estimationInfo.className     = "correctness";
+		estimationInfo.style.margin  = "15px 10px 15px 0px";
+		estimationInfo.style.padding = "0px";
+		estimationInfo.style.float   = "right";
+		
+        var circle = document.createElement('div');
+        circle.style.width = "10px";
+        circle.style.height = "10px";
+        circle.style.borderRadius = "5px";
+		if(correctness == Rating.correctness.HIGH) {
+			circle.style.color = "#00FF00";
+			circle.style.background = "#00FF00";
+            tooltipText = tooltipText+"High";
+		}
+		if(correctness == Rating.correctness.MIDDLE) {
+			circle.style.color = "#FFFF00";
+			circle.style.background = "#FFFF00";
+            tooltipText = tooltipText+"Middle";
+		}
+
+        var tooltip = document.createElement('span');
+        tooltip.innerHTML = tooltipText;
+        tooltip.style.visibility = "hidden";
+        tooltip.style.width = "180px";
+        tooltip.style.heigth = "14px";
+        tooltip.style.color = "#FFFFFF";
+        tooltip.style.textAlign = "center";
+        tooltip.style.margin = "-5px 0px 0px 15px";
+        tooltip.style.borderRadius = "6px";
+        tooltip.style.background = "#696969";
+        tooltip.style.position = "absolute";
+        tooltip.style.zIndex = "1";
+        tooltip.style.opacity = "0";
+        tooltip.style.transition = "opacity 1s";
+        
+        circle.appendChild(tooltip);
+        circle.onmouseover = function(){tooltip.style.visibility = "visible"; tooltip.style.opacity = "1";};
+        circle.onmouseout = function(){tooltip.style.visibility = "hidden"; tooltip.style.opacity = "0";};
+        
+		estimationInfo.appendChild(circle);
+		
+		return estimationInfo;
+	};
+	
+	this.getNotFoundRating = function(source, ratingRange, id) {
+	/* Default rating for ratings that haven't been found */
+		return this.buildRating('X', source, '0', ratingRange, Rating.correctness.LOW, id);
+	};
+
+	this.getNotYetRating = function(source, ratingRange, correctness, id) {
+	/* Default rating for movies that have been found, but aren't released yet */
+		return this.buildRating('-', source, '0', ratingRange, correctness, id);
+	};
+    
+    this.getErrorRating = function(source, ratingRange, id) {
+	/* Default rating for faulty requests */
+		return this.buildRating('E', source, '0', ratingRange, Rating.correctness.LOW, id);
+	};
+    
+	this.wrapRatingWithLink = function(rating, movieURL) {
+	/* Wrap the MP rating structure in a link to the ratings website */
+		var linkedRating = document.createElement('a');
+		linkedRating.appendChild(rating);
+		linkedRating.title = movieURL;
+		linkedRating.href = movieURL;
+		return linkedRating;
+	};
 }
 
-function refineRating(rating) {
-    /* Bewertung anpassen und auf Gueltigkeit ueberpruefen */
-    var refinedRating = rating.replace(/,/,".");
-    refinedRating = refinedRating.split(" ")[0];
-    refinedRating = refinedRating.split("/")[0];
-    if(refinedRating.match(/\d\.?\d?/)) {
-        return refinedRating;
-    } else {
-        return '-';
-    }
+function Refinery() {
+/* Collection of methods to refine several types of character sequences */
+	this.refineTitle = function(title) {
+	/* Refine movie titles of MP */
+		var refinedTitle = title.split("/ AT:")[0];  // Delete "AT" for "alternative titles"
+		return refinedTitle;
+	};
+	
+    this.refineString = function(string) {
+	/* Refine strings */
+        var refinedString = string.trim();
+        return refinedString;
+    };
+    
+	this.refineRating = function(rating) {
+	/* Refine/standardize ratings */
+		var refinedRating = rating.replace(/,/,".");
+		refinedRating = refinedRating.split(" ")[0];
+		refinedRating = refinedRating.split("/")[0];
+		if(refinedRating.match(/\d\.?\d?/)) {
+			return refinedRating;
+		} else {
+			return '-';
+		}
+	};
+	
+	this.refineRatingCount = function(ratingCount) {
+	/* Refine/standardize view counter */
+		var refinedRatingCount = ratingCount.replace(/(\.|,)/g,"");
+		if(refinedRatingCount.match(/^\d+$/)) {
+			return refinedRatingCount;
+		} else {
+			return "0";
+		}
+	};
+	
+	this.refineHTML = function(html) {
+	/* Refine HTML / edit encoded HTML */
+		var encodedHTML = encodeURI(html);
+		encodedHTML = encodedHTML.replace(/%E2%80%93/g,'-');
+		encodedHTML = encodedHTML.replace(/%25E2%2580%2593/g,'–');
+		encodedHTML = encodedHTML.replace(/%3C/g,'<');
+		encodedHTML = encodedHTML.replace(/%3E/g,'>');
+		encodedHTML = encodedHTML.replace(/%22/g,'"');
+		encodedHTML = encodedHTML.replace(/%20/g,' ');
+		encodedHTML = encodedHTML.replace(/&#x27;/g,"'");
+		encodedHTML = encodedHTML.replace(/%(\d|[ABCDEF])(\d|[ABCDEF])/g,"");
+		return encodedHTML;
+	};
 }
 
-function refineRatingCount(ratingCount) {
-    /* BewertungsAnzahl anpassen und auf Gueltigkeit ueberpruefen */
-    var refinedRatingCount = ratingCount.replace(/(\.|,)/g,"");
-    if(refinedRatingCount.match(/^\d+$/)) {
-        return refinedRatingCount;
-    } else {
-        return "0";
-    }
-}
+function HTMLExtractor() {
+/* Collection of methods to extract HTML structures out of character sequences */
+	
+	this.divIsNotEmpty = function(div) {
+	/* Test if there is some content */
+		if(div.match(/<div class="(.)*?">.?<\/div>/)) {
+			return false;
+		} else {
+			return true;
+		}
+	};
 
-function refineHTML(html) {
-    var encodedHTML = encodeURI(html);
-    encodedHTML = encodedHTML.replace(/%E2%80%93/g,'-');
-    encodedHTML = encodedHTML.replace(/%25E2%2580%2593/g,'–');
-    encodedHTML = encodedHTML.replace(/%3C/g,'<');
-    encodedHTML = encodedHTML.replace(/%3E/g,'>');
-    encodedHTML = encodedHTML.replace(/%22/g,'"');
-    encodedHTML = encodedHTML.replace(/%20/g,' ');
-    encodedHTML = encodedHTML.replace(/&#x27;/g,"'");
-    encodedHTML = encodedHTML.replace(/%(\d|[ABCDEF])(\d|[ABCDEF])/g,"");
-    return encodedHTML;
-}
-//---------/REFINE-FUNCTIONS-------
-
-//---------HTML-STRUCTURE-FUNCTIONS----
-function divIsNotEmpty(html) {
-    /* Testen, ob sich etwas im innerHTML befindet */
-    if(html.match(/<div class="(.)*?">.?<\/div>/)) {
-        return false;
-    } else {
-        return true;
-    }
-}
-
-function extractDiv(html, selector) {
-    /* Extrahieren eines Div Containers mit dessen Inhalt */
-    var divPosition = html.search(selector);
-    if(divPosition > 0) {
-        var htmlArray = html.split('');
+	this.extractDiv = function(html, selector) {
+	/* Extract a single div container; returns the first match */
+		var divPosition = html.search(selector);
+		if(divPosition > 0) {
+			var htmlArray = html.split('');
+			var i = 0;
+			var divs = 0;
+			do{
+				if(htmlArray[divPosition+i] == '<' && htmlArray[divPosition+i+1] == 'd') {
+					divs++;
+				}
+				if(htmlArray[divPosition+i] == '<' && htmlArray[divPosition+i+1] == '/' && htmlArray[divPosition+i+2] == 'd') {
+					divs--;
+				}
+				i++;
+			} while (divs != 0);
+			return html.substring(divPosition, divPosition+i+5);
+		}
+		return null;
+	};
+    
+    this.extractMultipleDivs = function(html, selector, number) {
+	/* Extract multiple div containers; returns the first <number> matches */
+        var results = [];
+        var startWith = 0;
+        var divPosition = 0;
         var i = 0;
         var divs = 0;
-        do{
-            if(htmlArray[divPosition+i] == '<' && htmlArray[divPosition+i+1] == 'd') {
-                divs++;
-            }
-            if(htmlArray[divPosition+i] == '<' && htmlArray[divPosition+i+1] == '/' && htmlArray[divPosition+i+2] == 'd') {
-                divs--;
-            }
-            i++;
-        } while (divs != 0);
-        return html.substring(divPosition, divPosition+i+5);
-    }
-    return null;
-}
-
-function extractSpan(html, selector) {
-    /* Extrahieren eines Spans mit dessen Inhalt */
-    var spanPosition = html.search(selector);
-    if(spanPosition > 0) {
+        
+        if(number < 1) {
+            return results;
+        }
         var htmlArray = html.split('');
-        var i = 0;
-        var spans = 0;
-        do{
-            if(htmlArray[spanPosition+i] == '<' && htmlArray[spanPosition+i+1] == 's' && htmlArray[spanPosition+i+2] == 'p') {
-                spans++;
+        
+        for(var j = 0; j < number; j++) {
+            divPosition = html.indexOf(selector, startWith);
+            if(divPosition >= startWith) {
+                i = 0;
+                divs = 0;
+                do{
+                    if(htmlArray[divPosition+i] == '<' && htmlArray[divPosition+i+1] == 'd') {
+                        divs++;
+                    }
+                    if(htmlArray[divPosition+i] == '<' && htmlArray[divPosition+i+1] == '/' && htmlArray[divPosition+i+2] == 'd') {
+                        divs--;
+                    }
+                    i++;
+                } while (divs != 0);
+                results.push(html.substring(divPosition, divPosition+i+5));
+                divPosition = divPosition+i+5;
+                startWith = divPosition;
             }
-            if(htmlArray[spanPosition+i] == '<' && htmlArray[spanPosition+i+1] == '/' && htmlArray[spanPosition+i+2] == 's' && htmlArray[spanPosition+i+3] == 'p') {
-                spans--;
-            }
-            i++;
-        } while (spans != 0);
-        return html.substring(spanPosition, spanPosition+i+5);
-    }
-    return null;
-}
+        }
+		return results;
+    };
 
-function extractFirstLink(html) {
-    /* Extrahieren des ersten Links mit dessen Inhalt */
-    var aPosition = html.search('<a ');
-    if(aPosition > 0) {
-        var htmlArray = html.split('');
-        var i = 0;
-        var as = 0;
-        do {
-            if(htmlArray[aPosition+i] == '<' && htmlArray[aPosition+i+1] == 'a') {
-                as++;
-            }
-            if(htmlArray[aPosition+i] == '<' && htmlArray[aPosition+i+1] == '/' && htmlArray[aPosition+i+2] == 'a') {
-                as--;
-            }
-            i++;
-        } while (as != 0);
-        return html.substring(aPosition, aPosition+i+3);
-    }
-    return null;
-}
+	this.extractSpan = function(html, selector) {
+		/* Extract a single span; returns the first match */
+		var spanPosition = html.search(selector);
+		if(spanPosition > 0) {
+			var htmlArray = html.split('');
+			var i = 0;
+			var spans = 0;
+			do{
+				if(htmlArray[spanPosition+i] == '<' && htmlArray[spanPosition+i+1] == 's' && htmlArray[spanPosition+i+2] == 'p') {
+					spans++;
+				}
+				if(htmlArray[spanPosition+i] == '<' && htmlArray[spanPosition+i+1] == '/' && htmlArray[spanPosition+i+2] == 's' && htmlArray[spanPosition+i+3] == 'p') {
+					spans--;
+				}
+				i++;
+			} while (spans != 0);
+			return html.substring(spanPosition, spanPosition+i+5);
+		}
+		return null;
+	};
 
-//---------/HTML-STRUCTURE-FUNCTIONS---
+	this.extractFirstLink = function(html) {
+		/* Extract a single link; returns the first match */
+		var aPosition = html.search('<a ');
+		if(aPosition > 0) {
+			var htmlArray = html.split('');
+			var i = 0;
+			var as = 0;
+			do {
+				if(htmlArray[aPosition+i] == '<' && htmlArray[aPosition+i+1] == 'a') {
+					as++;
+				}
+				if(htmlArray[aPosition+i] == '<' && htmlArray[aPosition+i+1] == '/' && htmlArray[aPosition+i+2] == 'a') {
+					as--;
+				}
+				i++;
+			} while (as != 0);
+			return html.substring(aPosition, aPosition+i+3);
+		}
+		return null;
+	};
+}
 
 //-----LOCALSTORAGE-ADAPTER------------
-/* Nur Hinterlegung binaerer Daten */
+/* To store some binary information */
 
 function getInfoFromLocalStorage(info) {
     if(typeof(Storage) !== "undefined") {
         var result = localStorage.getItem(info);
-        if(result === null) {  // nicht initialisiert
+        if(result === null) {  // not initialized
             initializeLocalStorageFor(info);
             return true;
-        } else if (result == 'true') {  //Wert true
+        } else if (result == 'true') {
             return true;
-        } else {  // Wert false
+        } else {
             return false;
         }
-    } else {  //  keine local storage unterstuetzung, Default-Wert nutzen
+    } else {  //  no local storage support, default values are used
         return true;
     }
 }
