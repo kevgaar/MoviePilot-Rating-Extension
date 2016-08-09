@@ -21,7 +21,7 @@
 //
 // ==UserScript==
 // @name          MoviePilot Rating-Extension
-// @version       2.1
+// @version       2.2
 // @downloadURL   https://github.com/kevgaar/MoviePilot-Rating-Extension/raw/master/mp-ratingextension.user.js
 // @namespace     http://www.moviepilot.de/movies/*
 // @description   Script, mit dem die Bewertungen von IMDb und anderen Plattformen ermittelt und angezeigt werden sollen
@@ -524,6 +524,7 @@ function Rating () {
                 var url = link.match(/"http.*?"/);
                 if(url === null) {return null;}
                 url = url[0].replace(/"/g,"");
+                link = link.replace(/(- |:)/g, '');
 
                 //Try to match movie titles with the results (and result infos)
                 var regExpMovieData = Rating.movieAliases;
