@@ -21,7 +21,7 @@
 //
 // ==UserScript==
 // @name          MoviePilot Rating-Extension
-// @version       2.2
+// @version       2.3
 // @downloadURL   https://github.com/kevgaar/MoviePilot-Rating-Extension/raw/master/mp-ratingextension.user.js
 // @namespace     http://www.moviepilot.de/movies/*
 // @description   Script, mit dem die Bewertungen von IMDb und anderen Plattformen ermittelt und angezeigt werden sollen
@@ -99,10 +99,10 @@ function collectEnglishMovieTitles(tmdbHTML) {
     }
     var tmdbResult = HTMLExtractor.extractDiv(tmdbHTML, '<div class="title">');
     if(tmdbResult !== null) {
-        tmdbResult = tmdbResult.match(/>(?!<|\s)(\w|\d|\s|')+</);
+        tmdbResult = tmdbResult.match(/>(?!<|\s)(\w|\d|\s|'|:|,|-)+</);
         if(tmdbResult !== null) {
             tmdbResult = tmdbResult[0];
-            tmdbResult = tmdbResult.match(/(\w|\d|\s|')+/)[0];
+            tmdbResult = tmdbResult.match(/(\w|\d|\s|'|:|,|-)+/)[0];
             var replaceOrder = Rating.movieAliases[0];
             Rating.movieAliases[0] = tmdbResult;
             Rating.movieAliases.push(replaceOrder);
@@ -906,6 +906,7 @@ function Refinery() {
     this.refineString = function(string) {
 	/* Refine strings */
         var refinedString = string.trim();
+        refinedString = this.refineHTML(refinedString);
         return refinedString;
     };
     
