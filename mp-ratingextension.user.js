@@ -346,7 +346,7 @@ function MPExtension() {
 		
 		var titles = [];
         addUniqueObjectToArray(titles, Refinery.refineString(movieHeadline[0].innerHTML)); //MP movie title
-        getMovieAliases(movieData[0].children[0].innerHTML).forEach(function(currentValue, index, array){addUniqueObjectToArray(titles, currentValue);}); //MP alternative titles
+        getMovieAliases(movieData[0].children[0].innerHTML).forEach(function(currentValue, index, array){addUniqueObjectToArray(titles, Refinery.refineString(currentValue));}); //MP alternative titles
 		
 		var year;
         var i = 0;
