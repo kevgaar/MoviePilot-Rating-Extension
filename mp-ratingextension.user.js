@@ -30,6 +30,7 @@
 // @grant         GM_xmlhttpRequest
 
 // ==/UserScript==
+debugger;
 //-------Constants---------------
 //Div-Names from every single rating. Used to show/hide the ratings via a checkbox
 var C_SHOWRATINGS = 'showExtRatings';
@@ -65,11 +66,11 @@ Rating.movieAliases = movieData[0];
 Rating.movieYear = movieData[1];
 Rating.correctness = {HIGH: 0, MIDDLE: 1, LOW: 2};
 
-var tmdbRating = new Rating().ratingSite('TMDB').ratingSiteAbbr('TMDB').ratingId('tmdb').ratingDivId(C_ID_TMDBRATING).websiteURL('www.themoviedb.org/movie/').scrapperFunction(tmdbRatingScrapper).googleHookFunction(startOtherRatings).responseSiteHookFunction(collectEnglishMovieTitles).ratingRequestModifier(tmdbRequestModifier).numberOfResultsIncluded(5).blacklist("The Movie Database \\(?TMDb\\)?");
+var tmdbRating = new Rating().ratingSite('TMDB').ratingSiteAbbr('TMDB').ratingId('tmdb').ratingDivId(C_ID_TMDBRATING).websiteURL('www.themoviedb.org/movie/').scrapperFunction(tmdbRatingScrapper).googleHookFunction(startOtherRatings).responseSiteHookFunction(collectEnglishMovieTitles).ratingRequestModifier(tmdbRequestModifier).numberOfResultsIncluded(5).blacklist(new RegExp(/The Movie Database \(?TMDb\)?/i));
 var imdbRating = new Rating().ratingSite('IMDB').ratingSiteAbbr('IMDB').ratingRange('10').ratingId('imdb').ratingDivId(C_ID_IMDBRATING).websiteURL('www.imdb.com').googleRating().numberOfResultsIncluded(5).blacklist('IMDb');
 var rtRating = new Rating().ratingSite('rotten tomatoes').ratingSiteAbbr('RT').ratingId('rt').ratingDivId(C_ID_RTRATINGS).websiteURL('www.rottentomatoes.com/m/').scrapperFunction(rtRatingScrapper).numberOfResultsIncluded(5).blacklist('Rotten Tomatoes');
 var mcRating = new Rating().ratingSite('metacritic').ratingSiteAbbr('MC').ratingId('mc').ratingDivId(C_ID_MCRATINGS).websiteURL('www.metacritic.com/movie/').scrapperFunction(mcRatingScrapper).numberOfResultsIncluded(5).blacklist('Metacritic');
-var wikiInfo = new Rating().ratingSite('Wikipedia').ratingSiteAbbr('wiki').ratingId('wiki').ratingDivId(C_ID_WIKIINFO).websiteURL('en.wikipedia.org').info().description('The Free Encyclopedia').numberOfResultsIncluded(5).blacklist("Wikipedia, the free encyclopedia");
+var wikiInfo = new Rating().ratingSite('Wikipedia').ratingSiteAbbr('wiki').ratingId('wiki').ratingDivId(C_ID_WIKIINFO).websiteURL('en.wikipedia.org').info().description('The Free Encyclopedia').numberOfResultsIncluded(5).blacklist(new RegExp(/Wikipedia,? the free encyclopedia/i)).blacklist(new RegExp(Rating.movieYear+" film", "i"));
 
 MPExtension.addRating("imdb", imdbRating, [[C_ID_IMDBRATING, 'IMDB Bewertungen anzeigen']]);
 MPExtension.addRating("rt", rtRating, [[C_ID_RTTOMATOMETER, 'RT Tomatormeter anzeigen'],[C_ID_RTCRITICSRATING, 'RT Kritiker Bewertungen anzeigen'],[C_ID_RTCOMMUNITYRATING, 'RT Community Bewertungen anzeigen']]);
@@ -81,7 +82,6 @@ MPExtension.setNotBannable("tmdb"); //Can not be disabled by the user, just be h
 
 //Kicking off the search...
 //The reason TMDB is kicked of first, is that TMDB is used to translate the german movie titles into english. The search with english titles is much more successfull. The other searches will be started by a hooked function of the TMDB rating.
-
 MPExtension.queueRatingSearch("tmdb");
 MPExtension.startRatingSearch();
 
@@ -97,7 +97,6 @@ function startOtherRatings() {
         MPExtension.startRatingSearch();
 }
 
-//function collectEnglishMovieTitles(tmdbHTML) {
 function collectEnglishMovieTitles(tmdbResponse) {
 /* Hooked function for translating german movie titles into english. Results in better google results */
         if(DEBUG_MODE) {
@@ -122,7 +121,7 @@ function collectEnglishMovieTitles(tmdbResponse) {
                 pushUniqueObjectToArray(Rating.movieAliases, title);
         }
 
-        startOtherRatings(); // Rating-Suche starten
+        startOtherRatings(); // start rating search
 }
 
 /* Request modifiers - transform the request URL, the website with the english title is needed */
@@ -543,7 +542,7 @@ function Rating () {
         var responseSiteHookFunction = null; //Hooked function; Will be called after a successfull rating website request
         var scrapperFunction = null;	//Scrapper function
         var estCorrectness = Rating.correctness.LOW;	//Estimated correctness of a rating result
-        var blacklistedStrings = []; //Backlist of strings, that will be deleted from char sequences like titles and infos
+        var blacklistedStrings = []; //Backlist of regular expressions, that will be deleted from char sequences like titles and infos
         
         var callback;
         var SEARCH_GOOGLE_RESULT_INFO = false;	//Search Googles infos to a result for matches too
@@ -569,7 +568,7 @@ function Rating () {
         this.googleHookFunction = function(func) {googleHookFunction = func; return this;};
         this.responseSiteHookFunction = function(func) {responseSiteHookFunction = func; return this;};
         this.scrapperFunction = function(func) {scrapperFunction = func; return this;};
-        this.blacklist = function(string) {blacklistedStrings.push(string); return this;};
+        this.blacklist = function(regex) {blacklistedStrings.push(regex); return this;};
         
         this.getRating = function() {
         /* Kick off the search */
@@ -686,8 +685,7 @@ function Rating () {
                                 title = Refinery.refineString(title)
                                 var regExp;
                                 for(var l = 0; l < blacklistedStrings.length; l++) { //delete unwanted strings
-                                        regExp = new RegExp(Refinery.refineString(blacklistedStrings[l]), 'i'); //create regular expression; use refined selector
-                                        title = title.replace(regExp, '');
+                                        title = title.replace(blacklistedStrings[l], '');
                                 }
                                 title = title.replace(Rating.movieYear, '');
                                 title = Refinery.refineString(title);
@@ -697,7 +695,7 @@ function Rating () {
                                 var j = 0;
                                 correctnessIndicator = 0;
                                 spamIndicator = 0;
-                                while(j < movieAliases.length && bestCorrectnessResult < 1 && bestSpamResult < 1) {
+                                while(j < movieAliases.length && (bestCorrectnessResult < 1 || bestSpamResult < 1)) {
                                         foundCounter = 0;
                                         var movieAliasSplits = movieAliases[j].split(' ');
                                         // Heuristic - at least half of the movie titles words have to be found in a result
@@ -714,9 +712,14 @@ function Rating () {
                                                         log("Result "+(k+1)+" matched. Correct: "+correctnessIndicator+" Spam: "+spamIndicator);
                                                 }
                                                 if(correctnessIndicator > bestCorrectnessResult || ( correctnessIndicator >= bestCorrectnessResult && spamIndicator > bestSpamResult)) {
+                                                        if (DEBUG_MODE && VERBOSE) {
+                                                                log("Result "+(k+1)+" new best: Correct: "+correctnessIndicator+" Spam: "+spamIndicator);
+                                                        }
                                                         bestResultIndex = k;
                                                         bestCorrectnessResult = correctnessIndicator;
                                                         bestSpamResult = spamIndicator;
+                                                } else if (DEBUG_MODE && VERBOSE) {
+                                                        log("Result "+(k+1)+" not good enaugh: Correct: "+correctnessIndicator+" Spam: "+spamIndicator);
                                                 }
                                         } else if (DEBUG_MODE && VERBOSE) {
                                                 log("Result "+(k+1)+" was excluded: Correct: "+correctnessIndicator+" Spam: "+spamIndicator);
