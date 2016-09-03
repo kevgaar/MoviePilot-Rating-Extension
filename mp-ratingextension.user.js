@@ -67,9 +67,9 @@ Rating.movieYear = movieData[1];
 Rating.correctness = {HIGH: 0, MIDDLE: 1, LOW: 2};
 
 var tmdbRating = new Rating().ratingSite('TMDB').ratingSiteAbbr('TMDB').ratingId('tmdb').ratingDivId(C_ID_TMDBRATING).websiteURL('www.themoviedb.org/movie/').scrapperFunction(tmdbRatingScrapper).googleHookFunction(startOtherRatings).responseSiteHookFunction(collectEnglishMovieTitles).ratingRequestModifier(tmdbRequestModifier).numberOfResultsIncluded(5).blacklist(new RegExp(/The Movie Database \(?TMDb\)?/i));
-var imdbRating = new Rating().ratingSite('IMDB').ratingSiteAbbr('IMDB').ratingRange('10').ratingId('imdb').ratingDivId(C_ID_IMDBRATING).websiteURL('www.imdb.com').googleRating().numberOfResultsIncluded(5).blacklist('IMDb');
-var rtRating = new Rating().ratingSite('rotten tomatoes').ratingSiteAbbr('RT').ratingId('rt').ratingDivId(C_ID_RTRATINGS).websiteURL('www.rottentomatoes.com/m/').scrapperFunction(rtRatingScrapper).numberOfResultsIncluded(5).blacklist('Rotten Tomatoes');
-var mcRating = new Rating().ratingSite('metacritic').ratingSiteAbbr('MC').ratingId('mc').ratingDivId(C_ID_MCRATINGS).websiteURL('www.metacritic.com/movie/').scrapperFunction(mcRatingScrapper).numberOfResultsIncluded(5).blacklist('Metacritic');
+var imdbRating = new Rating().ratingSite('IMDB').ratingSiteAbbr('IMDB').ratingRange('10').ratingId('imdb').ratingDivId(C_ID_IMDBRATING).websiteURL('www.imdb.com').googleRating().numberOfResultsIncluded(5).blacklist('IMDb').ratingRequestModifier(imdbRequestModifier);
+var rtRating = new Rating().ratingSite('rotten tomatoes').ratingSiteAbbr('RT').ratingId('rt').ratingDivId(C_ID_RTRATINGS).websiteURL('www.rottentomatoes.com/m/').scrapperFunction(rtRatingScrapper).numberOfResultsIncluded(5).blacklist('Rotten Tomatoes').ratingRequestModifier(rtRequestModifier);
+var mcRating = new Rating().ratingSite('metacritic').ratingSiteAbbr('MC').ratingId('mc').ratingDivId(C_ID_MCRATINGS).websiteURL('www.metacritic.com/movie/').scrapperFunction(mcRatingScrapper).numberOfResultsIncluded(5).blacklist('Metacritic').ratingRequestModifier(mcRequestModifier);
 var wikiInfo = new Rating().ratingSite('Wikipedia').ratingSiteAbbr('wiki').ratingId('wiki').ratingDivId(C_ID_WIKIINFO).websiteURL('en.wikipedia.org').info().description('The Free Encyclopedia').numberOfResultsIncluded(5).blacklist(new RegExp(/Wikipedia,? the free encyclopedia/i)).blacklist(new RegExp(Rating.movieYear+" film", "i"));
 
 MPExtension.addRating("imdb", imdbRating, [[C_ID_IMDBRATING, 'IMDB Bewertungen anzeigen']]);
@@ -124,8 +124,36 @@ function collectEnglishMovieTitles(tmdbResponse) {
         startOtherRatings(); // start rating search
 }
 
-/* Request modifiers - transform the request URL, the website with the english title is needed */
-function tmdbRequestModifier(url){return url.replace(/(\?language=[a-z]{2}(-[A-Z]{2})?|\/de$)/, '?language=en');}
+/* Request modifiers - transform the request URL */
+function tmdbRequestModifier(url) {
+        var refinedUrl = url.match(/(https?:\/\/)?www\.imdb\.com\/title\/.*?\//);
+        if(refinedUrl !== null) {
+                return refinedUrl[0].replace(/(\?language=[a-z]{2}(-[A-Z]{2})?|\/de$)/, '?language=en'); //the english website is needed
+        }
+        return url.replace(/(\?language=[a-z]{2}(-[A-Z]{2})?|\/de$)/, '?language=en'); //the english website is needed
+}
+function imdbRequestModifier(url) {
+        var refinedUrl = url.match(/(https?:\/\/)?www\.imdb\.com\/title\/.*?\//);
+        if(refinedUrl !== null) {
+                return refinedUrl[0];
+        }
+        return url;
+}
+function mcRequestModifier(url) {
+        var refinedUrl = url.match(/(https?:\/\/)?www\.metacritic\.com\/movie\/.*?\//);
+        if(refinedUrl !== null) {
+                return refinedUrl[0];
+        }
+        return url;
+}
+
+function rtRequestModifier(url) {
+        var refinedUrl = url.match(/(https?:\/\/)?www\.rottentomatoes\.com\/m\/.*?\//);
+        if(refinedUrl !== null) {
+                return refinedUrl[0];
+        }
+        return url;
+}
 
 function MPExtension() {
         /* Base class for the MoviePilot Rating Extension
@@ -237,11 +265,11 @@ function MPExtension() {
                 return true;
         }
         
-        function appendNewContainer(id) {
+        this.appendNewContainer = function(id) {
         /* Adding a new rating container */
                 ratingAnchor.appendChild(createElementWithId('div', id));
                 return this;
-        }
+        };
         
         function createElementWithId(element, id) {
         /* Ceating a new HTML element with an ID */
@@ -344,10 +372,23 @@ function MPExtension() {
                                 if(alreadyStarted === false) {
                                         self.startRatingSearch();
                                 } else {
-                                        document.getElementById(id).style.display = 'inline';
+                                        var element = document.getElementById(id);
+                                        if(element !== null) {
+                                                element.style.display = 'inline';
+                                        } else {
+                                                element = document.getElementById(parent);
+                                                element.style.display = 'inline';
+                                        }
                                 }
                         } else {
-                                document.getElementById(id).style.display = 'none';
+                                var element = document.getElementById(id);
+                                if(element !== null) {
+                                        element.style.display = 'none';
+                                } else {
+                                        var parent = checkboxRelation[id];
+                                        element = document.getElementById(parent);
+                                        element.style.display = 'none';
+                                }
                         }
                 };
                 return label;
@@ -394,8 +435,9 @@ function MPExtension() {
         /* Append a rating to its container
         * Choosing a specific container for every rating creates a steady sequence
         */
-                if (ratingAbbr in ratings) {
-                        document.getElementById(ratingAbbr).appendChild(ratingObject);
+                var element = document.getElementById(ratingAbbr);
+                if(element !== null) {
+                        element.appendChild(ratingObject);
                 } else if(DEBUG_MODE) {
                         console.log("Rating couldn't be added: Rating unknown.")
                 }
@@ -408,7 +450,7 @@ function MPExtension() {
          * @checkboxInformation - List of tuples, every single rating of a website with a discription
          */
                 ratings[ratingAbbr] = [ratingObject, checkboxInformation, false, false];
-                appendNewContainer(ratingAbbr);
+                self.appendNewContainer(ratingAbbr);
                 checkboxInformation.forEach(function(currentValue, index, array) {
                         var checkboxId = currentValue[0];
                         var description = currentValue[1];
@@ -596,6 +638,8 @@ function Rating () {
                                 log("Plausible google result found.");
                         }
                         ratingRequest = bestResult[0];
+                        ratingRequest = ratingRequestModifier(ratingRequest);
+                        
                         if(ratingSourceType == ratingSourceTypes.GOOGLE) {
                                 var rating = getRatingByGoogle(bestResult[1]);
                                 if(LINK_WEBSITES) {
@@ -608,7 +652,6 @@ function Rating () {
                                 MPExtension.addRatingToContainer(ratingId, MPRatingFactory.wrapRatingWithLink(info, ratingRequest));
                         } else {	//Type EXTERN
                                 callback = handleRatingSiteResponse;
-                                ratingRequest = ratingRequestModifier(ratingRequest);
                                 if(DEBUG_MODE) {
                                         log("Rating site request: "+ratingRequest);
                                 }
