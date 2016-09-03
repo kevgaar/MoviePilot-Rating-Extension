@@ -713,13 +713,13 @@ function Rating () {
                                                 }
                                                 if(correctnessIndicator > bestCorrectnessResult || ( correctnessIndicator >= bestCorrectnessResult && spamIndicator > bestSpamResult)) {
                                                         if (DEBUG_MODE && VERBOSE) {
-                                                                log("Result "+(k+1)+" new best: Correct: "+correctnessIndicator+" Spam: "+spamIndicator);
+                                                                log("New best: Result "+(k+1)+" Correct: "+correctnessIndicator+" Spam: "+spamIndicator);
                                                         }
                                                         bestResultIndex = k;
                                                         bestCorrectnessResult = correctnessIndicator;
                                                         bestSpamResult = spamIndicator;
                                                 } else if (DEBUG_MODE && VERBOSE) {
-                                                        log("Result "+(k+1)+" not good enaugh: Correct: "+correctnessIndicator+" Spam: "+spamIndicator);
+                                                        log("Close: Result "+(k+1)+" Correct: "+correctnessIndicator+" Spam: "+spamIndicator);
                                                 }
                                         } else if (DEBUG_MODE && VERBOSE) {
                                                 log("Result "+(k+1)+" was excluded: Correct: "+correctnessIndicator+" Spam: "+spamIndicator);
@@ -1106,7 +1106,8 @@ function Refinery() {
                 var refinedString = string;
                 refinedString = this.refineHTML(refinedString);
                 refinedString = refinedString.replace(/&amp;\s?/g, ''); //Delete encoded ampersand
-                refinedString = refinedString.replace(/(\?|'|:|,|-\s?|\(|\)|\.|&|–|—)/g, ''); // Delete unwanted characters
+                refinedString = refinedString.replace(/(\?|'|"|,|\b-\b|\(|\)|\.|&|\b–\b|\b—\b)/g, ''); // Delete unwanted characters
+                refinedString = refinedString.replace(/(:)/g, ' ');
                 refinedString = this.trimWhitespaces(refinedString);
                 return refinedString;
         };
