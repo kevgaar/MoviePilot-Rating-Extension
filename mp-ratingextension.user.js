@@ -21,7 +21,7 @@
 //
 // ==UserScript==
 // @name          MoviePilot Rating-Extension
-// @version       2.6
+// @version       2.7
 // @downloadURL   https://github.com/kevgaar/MoviePilot-Rating-Extension/raw/master/mp-ratingextension.user.js
 // @namespace     http://www.moviepilot.de/movies/*
 // @description   Script, mit dem die Bewertungen von IMDb und anderen Plattformen ermittelt und angezeigt werden sollen
@@ -30,7 +30,6 @@
 // @grant         GM_xmlhttpRequest
 
 // ==/UserScript==
-
 //-------Constants---------------
 //Div-Names from every single rating. Used to show/hide the ratings via a checkbox
 var C_SHOWRATINGS = 'showExtRatings';
@@ -57,16 +56,6 @@ if(!MPExtension.setupExtension()){
         return false;
 }
 
-MPExtension.appendNewContainer('imdb').appendNewContainer('rt').appendNewContainer('mc').appendNewContainer('tmdb').appendNewContainer('info');
-MPExtension.appendNewCheckbox(C_ID_IMDBRATING, 'IMDB Bewertungen anzeigen');
-MPExtension.appendNewCheckbox(C_ID_RTTOMATOMETER, 'RT Tomatormeter anzeigen');
-MPExtension.appendNewCheckbox(C_ID_RTCRITICSRATING, 'RT Kritiker Bewertungen anzeigen');
-MPExtension.appendNewCheckbox(C_ID_RTCOMMUNITYRATING, 'RT Community Bewertungen anzeigen');
-MPExtension.appendNewCheckbox(C_ID_MCCRITICSRATING, 'MC Metascore anzeigen');
-MPExtension.appendNewCheckbox(C_ID_MCCOMMUNITYRATING, 'MC Community Bewertungen anzeigen');
-MPExtension.appendNewCheckbox(C_ID_TMDBRATING, 'TMDb Bewertungen anzeigen');
-MPExtension.appendNewCheckbox(C_ID_WIKIINFO, 'Wikipedia Infos anzeigen');
-
 var movieData = MPExtension.getMovieData(); //Search MP for information
 if(movieData === null ) {
         return false;
@@ -76,19 +65,36 @@ Rating.movieAliases = movieData[0];
 Rating.movieYear = movieData[1];
 Rating.correctness = {HIGH: 0, MIDDLE: 1, LOW: 2};
 
+var tmdbRating = new Rating().ratingSite('TMDB').ratingSiteAbbr('TMDB').ratingId('tmdb').ratingDivId(C_ID_TMDBRATING).websiteURL('www.themoviedb.org/movie/').scrapperFunction(tmdbRatingScrapper).googleHookFunction(startOtherRatings).responseSiteHookFunction(collectEnglishMovieTitles).ratingRequestModifier(tmdbRequestModifier).numberOfResultsIncluded(5).blacklist("The Movie Database \\(?TMDb\\)?");
+var imdbRating = new Rating().ratingSite('IMDB').ratingSiteAbbr('IMDB').ratingRange('10').ratingId('imdb').ratingDivId(C_ID_IMDBRATING).websiteURL('www.imdb.com').googleRating().numberOfResultsIncluded(5).blacklist('IMDb');
+var rtRating = new Rating().ratingSite('rotten tomatoes').ratingSiteAbbr('RT').ratingId('rt').ratingDivId(C_ID_RTRATINGS).websiteURL('www.rottentomatoes.com/m/').scrapperFunction(rtRatingScrapper).numberOfResultsIncluded(5).blacklist('Rotten Tomatoes');
+var mcRating = new Rating().ratingSite('metacritic').ratingSiteAbbr('MC').ratingId('mc').ratingDivId(C_ID_MCRATINGS).websiteURL('www.metacritic.com/movie/').scrapperFunction(mcRatingScrapper).numberOfResultsIncluded(5).blacklist('Metacritic');
+var wikiInfo = new Rating().ratingSite('Wikipedia').ratingSiteAbbr('wiki').ratingId('wiki').ratingDivId(C_ID_WIKIINFO).websiteURL('en.wikipedia.org').info().description('The Free Encyclopedia').numberOfResultsIncluded(5).blacklist("Wikipedia, the free encyclopedia");
+
+MPExtension.addRating("imdb", imdbRating, [[C_ID_IMDBRATING, 'IMDB Bewertungen anzeigen']]);
+MPExtension.addRating("rt", rtRating, [[C_ID_RTTOMATOMETER, 'RT Tomatormeter anzeigen'],[C_ID_RTCRITICSRATING, 'RT Kritiker Bewertungen anzeigen'],[C_ID_RTCOMMUNITYRATING, 'RT Community Bewertungen anzeigen']]);
+MPExtension.addRating("mc", mcRating, [[C_ID_MCCRITICSRATING, 'MC Metascore anzeigen'],[C_ID_MCCOMMUNITYRATING, 'MC Community Bewertungen anzeigen']]);
+MPExtension.addRating("tmdb", tmdbRating, [[C_ID_TMDBRATING, 'TMDb Bewertungen anzeigen']]);
+MPExtension.addRating("wiki", wikiInfo, [[C_ID_WIKIINFO, 'Wikipedia Infos anzeigen']]);
+
+MPExtension.setNotBannable("tmdb"); //Can not be disabled by the user, just be hidden
+
 //Kicking off the search...
 //The reason TMDB is kicked of first, is that TMDB is used to translate the german movie titles into english. The search with english titles is much more successfull. The other searches will be started by a hooked function of the TMDB rating.
-var tmdbRating = new Rating().ratingSite('TMDB').ratingSiteAbbr('TMDB').ratingId('tmdb').ratingDivId(C_ID_TMDBRATING).websiteURL('www.themoviedb.org/movie/').scrapperFunction(tmdbRatingScrapper).googleHookFunction(startOtherRatings).responseSiteHookFunction(collectEnglishMovieTitles).ratingRequestModifier(tmdbRequestModifier).numberOfResultsIncluded(5).blacklist("The Movie Database \\(?TMDb\\)?").getRating();
+
+MPExtension.queueRatingSearch("tmdb");
+MPExtension.startRatingSearch();
 
 function startOtherRatings() {
 /* Function to start the search for ratings from other websites */
         if(DEBUG_MODE) {
                 console.log("MP-R-Ext: TMDB: Start other rating requests.");
         }
-        var imdbRating = new Rating().ratingSite('IMDB').ratingSiteAbbr('IMDB').ratingRange('10').ratingId('imdb').ratingDivId(C_ID_IMDBRATING).websiteURL('www.imdb.com').googleRating().numberOfResultsIncluded(5).blacklist('IMDb').getRating();
-        var rtRating = new Rating().ratingSite('rotten tomatoes').ratingSiteAbbr('RT').ratingId('rt').ratingDivId(C_ID_RTRATINGS).websiteURL('www.rottentomatoes.com/m/').scrapperFunction(rtRatingScrapper).numberOfResultsIncluded(5).blacklist('Rotten Tomatoes').getRating();
-        var mcRating = new Rating().ratingSite('metacritic').ratingSiteAbbr('MC').ratingId('mc').ratingDivId(C_ID_MCRATINGS).websiteURL('www.metacritic.com/movie/').scrapperFunction(mcRatingScrapper).numberOfResultsIncluded(5).blacklist('Metacritic').getRating();
-        var wikiInfo = new Rating().ratingSite('Wikipedia').ratingSiteAbbr('wiki').ratingId('info').ratingDivId(C_ID_WIKIINFO).websiteURL('en.wikipedia.org').info().description('The Free Encyclopedia').numberOfResultsIncluded(5).blacklist("Wikipedia, the free encyclopedia").getRating();
+        MPExtension.queueRatingSearch("imdb");
+        MPExtension.queueRatingSearch("rt");
+        MPExtension.queueRatingSearch("mc");
+        MPExtension.queueRatingSearch("wiki");
+        MPExtension.startRatingSearch();
 }
 
 //function collectEnglishMovieTitles(tmdbHTML) {
@@ -97,7 +103,7 @@ function collectEnglishMovieTitles(tmdbResponse) {
         if(DEBUG_MODE) {
                 console.log("MP-R-Ext: TMDB: Collecting movie titles.");
         }
-		
+        
         //query english titles
         var title = null;
         if(tmdbResponse.baseURI.search("/release-info") > 0) { //release-info page
@@ -116,18 +122,22 @@ function collectEnglishMovieTitles(tmdbResponse) {
                 pushUniqueObjectToArray(Rating.movieAliases, title);
         }
 
-        startOtherRatings(); // start search for other ratings
+        startOtherRatings(); // Rating-Suche starten
 }
 
-/* Request modifiers - transform the request URL */
-function tmdbRequestModifier(url){return url.replace(/(\?language=[a-z]{2}(-[A-Z]{2})?|$|de)/, '?language=en');}
+/* Request modifiers - transform the request URL, the website with the english title is needed */
+function tmdbRequestModifier(url){return url.replace(/(\?language=[a-z]{2}(-[A-Z]{2})?|\/de$)/, '?language=en');}
 
 function MPExtension() {
         /* Base class for the MoviePilot Rating Extension
         * Sets up the Extension and lets you add new ratings from other websites
         */
         var ratingAnchor; //Div element. Hook point for children, especially ratings containers
+        var ratings = [];
         var checkboxes = []; //Collection of Checkboxes; To show/hide different ratings.
+        var checkboxRelation = [];
+        var ratingQueue = [];
+        var self = this;
         
         this.setupExtension = function() {
         /* Setting up the extension
@@ -181,7 +191,7 @@ function MPExtension() {
                 return true;
         };
         
-        var fixMPLayout = function() {
+        function fixMPLayout() {
         /* Modifies MPs structure - all ratings have to look alike... */
                 var userAction = document.getElementsByClassName('movie_user_action')[0];
                 var criticsCount = document.getElementsByClassName('criticscount')[0];
@@ -226,22 +236,22 @@ function MPExtension() {
                 }
                 
                 return true;
-        };
+        }
         
-        this.appendNewContainer = function(id) {
+        function appendNewContainer(id) {
         /* Adding a new rating container */
                 ratingAnchor.appendChild(createElementWithId('div', id));
                 return this;
-        };
+        }
         
-        var createElementWithId = function(element, id) {
+        function createElementWithId(element, id) {
         /* Ceating a new HTML element with an ID */
                 var newDiv = document.createElement(element);
                 newDiv.id = id;
                 return newDiv;
-        };
+        }
         
-        var onToggleContentButtonClick = function() {
+        function onToggleContentButtonClick() {
         /* Handler for Click Event - toggleContentButton */
                 var content = document.getElementById('extRatings');
                 var button = document.getElementById('toggleContentButton');
@@ -252,11 +262,11 @@ function MPExtension() {
                 } else {
                         content.style.display = 'inline';
                         button.innerHTML ='Externe Bewertungen verbergen';
-                        setInfoInLocalStorage(C_SHOWRATINGS, true);
+                        setInfoInLocalStorage(C_SHOWRATINGS, true);;
                 }
-        };
+        }
         
-        var onSettingButtonClick = function() {
+        function onSettingButtonClick() {
         /* Handler for Click Event - settingsButton
         * Creates and shows the settings on demand
         */
@@ -268,9 +278,9 @@ function MPExtension() {
                         document.getElementById('ratingExtension').appendChild(overlay);
                         overlay.style.visibility = 'visible';
                 }
-        };
+        }
         
-        var addSettingsOverlay = function() {
+        function addSettingsOverlay(){
         /* Creation of the settings for the extension */
                 var overlayDiv = document.createElement('div');
                 var overlayContentDiv = document.createElement('div');
@@ -303,17 +313,17 @@ function MPExtension() {
                 overlayContentDiv.appendChild(exitButton);
                 overlayDiv.appendChild(overlayContentDiv);
                 return overlayDiv;
-        };
+        }
         
-        this.appendNewCheckbox = function(id, description){
+        function appendNewCheckbox(id, description){
         /* Add a new checkbox to the settings overlay
         * Checking/unchecking it will show/hide a Div container with the ID <id>
         */
                 checkboxes.push(getCheckBoxFor(id, description));
                 return this;
-        };
+        }
         
-        var getCheckBoxFor = function(id, infoText) {
+        function getCheckBoxFor(id, infoText) {
         /* Creation of a chekbox
         * Registers its <id> in the local storage for future access
         */
@@ -330,13 +340,19 @@ function MPExtension() {
                 checkBox.onchange = function() {
                         setInfoInLocalStorage(id, this.checked);
                         if(this.checked) {
-                                document.getElementById(id).style.display = 'inline';
+                                var parent = checkboxRelation[id]; //Get childs' parent
+                                var alreadyStarted = ratings[parent][2];
+                                if(alreadyStarted === false) {
+                                        self.startRatingSearch();
+                                } else {
+                                        document.getElementById(id).style.display = 'inline';
+                                }
                         } else {
                                 document.getElementById(id).style.display = 'none';
                         }
                 };
                 return label;
-        };
+        }
         
         this.getMovieData = function() {
         /* Get important inforation from the MP website: Movie titles, year */
@@ -369,18 +385,82 @@ function MPExtension() {
                 return [titles, year];
         };
         
-        var getMovieAliases = function(aliasString) {
+        function getMovieAliases(aliasString) {
         /* Get movie aliases from a string */
                 var aliases = aliasString.split(/\s?\/\sAT:\s?|\s?;\s?|\s?\/\s?/g); // Usual delimiters are '\ AT:', ';' and '/'
                 return aliases;
         };
         
-        this.addRatingToContainer = function(containerId, rating) {
+        this.addRatingToContainer = function(ratingAbbr, ratingObject) {
         /* Append a rating to its container
         * Choosing a specific container for every rating creates a steady sequence
         */
-                document.getElementById(containerId).appendChild(rating);
+                if (ratingAbbr in ratings) {
+                        document.getElementById(ratingAbbr).appendChild(ratingObject);
+                } else if(DEBUG_MODE) {
+                        console.log("Rating couldn't be added: Rating unknown.")
+                }
         };
+        
+        this.addRating = function(ratingAbbr, ratingObject, checkboxInformation) {
+        /* Add a rating to the extension.
+         * @ratingAbbr - String, Abbrivation of the rating website
+         * @ratingObject - Rating, a rating class object
+         * @checkboxInformation - List of tuples, every single rating of a website with a discription
+         */
+                ratings[ratingAbbr] = [ratingObject, checkboxInformation, false, false];
+                appendNewContainer(ratingAbbr);
+                checkboxInformation.forEach(function(currentValue, index, array) {
+                        var checkboxId = currentValue[0];
+                        var description = currentValue[1];
+                        appendNewCheckbox(checkboxId, description);
+                        checkboxRelation[checkboxId] = ratingAbbr;
+                });
+        };
+
+        this.queueRatingSearch = function(ratingAbbr) {
+        /* Queue a rating for search execution */
+                if(ratingAbbr in ratings) {
+                        ratingQueue.push(ratingAbbr)
+                } else if(DEBUG_MODE) {
+                        console.log("Rating unknown.")
+                }
+        };
+
+        this.startRatingSearch = function() {
+        /* Start the search for a Rating */
+                ratingQueue.forEach(function(currentValue, index, value) {
+                        runSearch(currentValue);
+                });
+        };
+        
+        function runSearch(ratingAbbr) {
+        /* Run the search for a specific rating */
+                if (ratingAbbr in ratings) {
+                        var userStartSettings = false; //Check in the local storage user settings if the search should be started
+                        ratings[ratingAbbr][1].forEach(function(currentValue, index, array){
+                                userStartSettings = (userStartSettings || getInfoFromLocalStorage(currentValue[0]))
+                        });
+                        
+                        var alreadyStarted = ratings[ratingAbbr][2]; //Check if the search has already been started
+                        var isNotBannable = ratings[ratingAbbr][3]; //Check if the search can be forbidden
+                        if ((isNotBannable || userStartSettings) && alreadyStarted === false) { //Start the search?
+                                ratings[ratingAbbr][2] = true;
+                                ratings[ratingAbbr][0].getRating();
+                        }
+                } else if(DEBUG_MODE) {
+                        console.log("Search couldn't be startet: Rating unknown.")
+                }
+        }
+        
+        this.setNotBannable = function(ratingAbbr) {
+        /* A rating should not be disabled */
+                if (ratingAbbr in ratings) {
+                        ratings[ratingAbbr][3] = true;
+                } else if(DEBUG_MODE) {
+                        console.log("Rating unknown.")
+                }
+        }
 }
 
 function addUniqueObjectToArray(array, object){
@@ -675,7 +755,7 @@ function Rating () {
                                 ratingText = ratingText[0].split('-')
                                 var rating = ratingText[0].trim();
                                 var ratingCount = ratingText[1].trim()
-                                return MPRatingFactory.buildRating(Refinery.refineRating(rating), ratingSiteAbbr, Refinery.refineRatingCount(ratingCount), ratingRange, estCorrectness, ratingId);
+                                return MPRatingFactory.buildRating(Refinery.refineRating(rating), ratingSiteAbbr, Refinery.refineRatingCount(ratingCount), ratingRange, estCorrectness, ratingDivId);
                         }
                 }
                 return MPRatingFactory.getNotYetRating(ratingSiteAbbr, ratingRange, estCorrectness, ratingId);
@@ -820,6 +900,7 @@ function mcRatingScrapper(mcResponse, estCorrectness) {
 function tmdbRatingScrapper(tmdbResponse, estCorrectness) {
 /* Rating-Scrapper for TheMovieDB */
         var tmdb_div;
+        
         var rating = null;
         var ratingCount = null;
         
