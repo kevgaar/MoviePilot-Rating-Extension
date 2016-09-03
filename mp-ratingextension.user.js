@@ -97,12 +97,26 @@ function collectEnglishMovieTitles(tmdbResponse) {
         if(DEBUG_MODE) {
                 console.log("MP-R-Ext: TMDB: Collecting movie titles.");
         }
-        var titleDiv = tmdbResponse.getElementsByClassName("title")[0];
-        var title = titleDiv.getElementsByTagName("a")[0];
-        title = Refinery.refineString(title.childNodes[0].nodeValue);
-        pushUniqueObjectToArray(Rating.movieAliases, title);
-        
-        startOtherRatings(); // Rating-Suche starten
+		
+        //query english titles
+        var title = null;
+        if(tmdbResponse.baseURI.search("/release-info") > 0) { //release-info page
+                var titleSpan = tmdbResponse.querySelector("h2.title > a > span[itemprop=name]");
+                if(titleSpan !== null) {
+                        title = titleSpan.innerHTML;
+                }
+        } else { // common movie page
+                var titleDiv = tmdbResponse.querySelector("div.title > h2 > a");
+                if(titleDiv !== null) {
+                        title = titleDiv.childNodes[0].nodeValue;
+                }
+        }
+        if(title !== null) {
+                title = Refinery.refineString(title);
+                pushUniqueObjectToArray(Rating.movieAliases, title);
+        }
+
+        startOtherRatings(); // start search for other ratings
 }
 
 /* Request modifiers - transform the request URL */
@@ -805,15 +819,32 @@ function mcRatingScrapper(mcResponse, estCorrectness) {
 
 function tmdbRatingScrapper(tmdbResponse, estCorrectness) {
 /* Rating-Scrapper for TheMovieDB */
-        var tmdb_div = document.createElement('div');
-        tmdb_div.id = C_ID_TMDBRATING;
-        var ratingContainer = tmdbResponse.querySelector("span.rating");
-        if(ratingContainer !== null) {
-                var rating = ratingContainer.innerHTML;
-                tmdb_div.appendChild(MPRatingFactory.buildRating(Refinery.refineRating(rating), 'TMDB', "-", 10, estCorrectness,  C_ID_TMDBRATING)); // RatingCount nicht mehr oeffentlich?
-        } else {
-                tmdb_div.appendChild(MPRatingFactory.getNotYetRating('TMDB', 10, estCorrectness, C_ID_TMDBRATING));
+        var tmdb_div;
+        var rating = null;
+        var ratingCount = null;
+        
+        if(tmdbResponse.baseURI.search("/release-info") > 0) { //release-info page
+                var ratingSpan = tmdbResponse.querySelector("span[itemprop=ratingValue]");
+                var ratingCountSpan = tmdbResponse.querySelector("span[itemprop=ratingCount]");
+                if(ratingSpan !== null && ratingCountSpan !== null) {
+                        rating =  ratingSpan.innerHTML;
+                        ratingCount = ratingCountSpan.innerHTML;
+                }
+        } else { //common movie page
+                var ratingSpan = tmdbResponse.querySelector("span.rating");
+                if(ratingSpan !== null) {
+                        rating = ratingSpan.innerHTML;
+                }
         }
+        
+        if(rating !== null && ratingCount == null) {
+                tmdb_div = MPRatingFactory.buildRating(Refinery.refineRating(rating), 'TMDB', "-", 10, estCorrectness,  C_ID_TMDBRATING);
+        } else if(rating !== null && ratingCount !== null){
+                tmdb_div = MPRatingFactory.buildRating(Refinery.refineRating(rating), 'TMDB', Refinery.refineRatingCount(ratingCount), 10, estCorrectness,  C_ID_TMDBRATING);
+        } else {
+                tmdb_div = MPRatingFactory.getNotYetRating('TMDB', 10, estCorrectness, C_ID_TMDBRATING);
+        }
+        
         return tmdb_div;
 }
 
