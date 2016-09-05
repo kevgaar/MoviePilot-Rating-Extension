@@ -66,11 +66,11 @@ Rating.movieAliases = movieData[0];
 Rating.movieYear = movieData[1];
 Rating.correctness = {HIGH: 0, MIDDLE: 1, LOW: 2};
 
-var tmdbRating = new Rating().ratingSite('TMDB').ratingSiteAbbr('TMDB').ratingId('tmdb').ratingDivId(C_ID_TMDBRATING).websiteURL('www.themoviedb.org/movie/').scrapperFunction(tmdbRatingScrapper).googleHookFunction(startOtherRatings).responseSiteHookFunction(collectEnglishMovieTitles).ratingRequestModifier(tmdbRequestModifier).numberOfResultsIncluded(5).blacklist(new RegExp(/The Movie Database \(?TMDb\)?/i));
-var imdbRating = new Rating().ratingSite('IMDB').ratingSiteAbbr('IMDB').ratingRange('10').ratingId('imdb').ratingDivId(C_ID_IMDBRATING).websiteURL('www.imdb.com').googleRating().numberOfResultsIncluded(5).blacklist('IMDb').ratingRequestModifier(imdbRequestModifier);
-var rtRating = new Rating().ratingSite('rotten tomatoes').ratingSiteAbbr('RT').ratingId('rt').ratingDivId(C_ID_RTRATINGS).websiteURL('www.rottentomatoes.com/m/').scrapperFunction(rtRatingScrapper).numberOfResultsIncluded(5).blacklist('Rotten Tomatoes').ratingRequestModifier(rtRequestModifier);
-var mcRating = new Rating().ratingSite('metacritic').ratingSiteAbbr('MC').ratingId('mc').ratingDivId(C_ID_MCRATINGS).websiteURL('www.metacritic.com/movie/').scrapperFunction(mcRatingScrapper).numberOfResultsIncluded(5).blacklist('Metacritic').ratingRequestModifier(mcRequestModifier);
-var wikiInfo = new Rating().ratingSite('Wikipedia').ratingSiteAbbr('wiki').ratingId('wiki').ratingDivId(C_ID_WIKIINFO).websiteURL('en.wikipedia.org').info().description('The Free Encyclopedia').numberOfResultsIncluded(5).blacklist(new RegExp(/Wikipedia,? the free encyclopedia/i)).blacklist(new RegExp(Rating.movieYear+" film", "i"));
+var tmdbRating = new Rating().ratingSite('TMDB').ratingSiteAbbr('TMDB').ratingId('tmdb').ratingDivId(C_ID_TMDBRATING).websiteURL('www.themoviedb.org/movie/').scrapperFunction(tmdbRatingScrapper).googleHookFunction(startOtherRatings).responseSiteHookFunction(collectEnglishMovieTitles).ratingRequestModifier(tmdbRequestModifier).numberOfResultsIncluded(5).blacklist(new RegExp(/The Movie Database/i)).blacklist(new RegExp(/TMDb/i)).blacklist(new RegExp(/Recommended Movies/i));
+var imdbRating = new Rating().ratingSite('IMDB').ratingSiteAbbr('IMDB').ratingRange('10').ratingId('imdb').ratingDivId(C_ID_IMDBRATING).websiteURL('www.imdb.com').googleRating().numberOfResultsIncluded(5).blacklist(new RegExp(/IMDb/i)).blacklist(new RegExp(/TV Movie/i)).ratingRequestModifier(imdbRequestModifier);
+var rtRating = new Rating().ratingSite('rotten tomatoes').ratingSiteAbbr('RT').ratingId('rt').ratingDivId(C_ID_RTRATINGS).websiteURL('www.rottentomatoes.com/m/').scrapperFunction(rtRatingScrapper).numberOfResultsIncluded(5).blacklist(new RegExp(/Rotten Tomatoes/i)).ratingRequestModifier(rtRequestModifier);
+var mcRating = new Rating().ratingSite('metacritic').ratingSiteAbbr('MC').ratingId('mc').ratingDivId(C_ID_MCRATINGS).websiteURL('www.metacritic.com/movie/').scrapperFunction(mcRatingScrapper).numberOfResultsIncluded(5).blacklist(new RegExp(/Metacritic/i)).ratingRequestModifier(mcRequestModifier);
+var wikiInfo = new Rating().ratingSite('Wikipedia').ratingSiteAbbr('wiki').ratingId('wiki').ratingDivId(C_ID_WIKIINFO).websiteURL('en.wikipedia.org').info().description('The Free Encyclopedia').numberOfResultsIncluded(5).blacklist(new RegExp(/(film)?\s*Wikipedia,? the free encyclopedia/i)).googleRequestModifier(wikiRequestModifier);
 
 MPExtension.addRating("imdb", imdbRating, [[C_ID_IMDBRATING, 'IMDB Bewertungen anzeigen']]);
 MPExtension.addRating("rt", rtRating, [[C_ID_RTTOMATOMETER, 'RT Tomatormeter anzeigen'],[C_ID_RTCRITICSRATING, 'RT Kritiker Bewertungen anzeigen'],[C_ID_RTCOMMUNITYRATING, 'RT Community Bewertungen anzeigen']]);
@@ -153,6 +153,10 @@ function rtRequestModifier(url) {
                 return refinedUrl[0];
         }
         return url;
+}
+
+function wikiRequestModifier(url) {
+        return url+"+film";
 }
 
 function MPExtension() {
@@ -1149,7 +1153,7 @@ function Refinery() {
                 var refinedString = string;
                 refinedString = this.refineHTML(refinedString);
                 refinedString = refinedString.replace(/&amp;\s?/g, ''); //Delete encoded ampersand
-                refinedString = refinedString.replace(/(\?|'|"|,|\b-\b|\(|\)|\.|&|\b–\b|\b—\b)/g, ''); // Delete unwanted characters
+                refinedString = refinedString.replace(/(\?|'|"|,|-\s|\(|\)|\.|&|–\s|—\s)/g, ''); // Delete unwanted characters
                 refinedString = refinedString.replace(/(:)/g, ' ');
                 refinedString = this.trimWhitespaces(refinedString);
                 return refinedString;
