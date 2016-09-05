@@ -294,6 +294,7 @@ function MPExtension() {
                         content.style.display = 'inline';
                         button.innerHTML ='Externe Bewertungen verbergen';
                         setInfoInLocalStorage(C_SHOWRATINGS, true);;
+                        self.startRatingSearch();
                 }
         }
         
@@ -474,9 +475,11 @@ function MPExtension() {
 
         this.startRatingSearch = function() {
         /* Start the search for a Rating */
-                ratingQueue.forEach(function(currentValue, index, value) {
-                        runSearch(currentValue);
-                });
+                if(getInfoFromLocalStorage(C_SHOWRATINGS)) {
+                        ratingQueue.forEach(function(currentValue, index, value) {
+                                runSearch(currentValue);
+                        });
+                }
         };
         
         function runSearch(ratingAbbr) {
