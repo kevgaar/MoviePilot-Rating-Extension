@@ -64,13 +64,14 @@ if(movieData === null ) {
 // Static variables shared by all instances of Rating
 Rating.movieAliases = movieData[0];
 Rating.movieYear = movieData[1];
-Rating.correctness = {HIGH: 0, MIDDLE: 1, LOW: 2};
+//Rating.correctness = {HIGH: 0, MIDDLE: 1, LOW: 2};
+Rating.correctness = {PERFECT: 0, GOOD: 1, OKAY: 2, BAD: 3, POOR: 4};
 
-var tmdbRating = new Rating().ratingSite('TMDB').ratingSiteAbbr('TMDB').ratingId('tmdb').ratingDivId(C_ID_TMDBRATING).websiteURL('www.themoviedb.org/movie/').scrapperFunction(tmdbRatingScrapper).googleHookFunction(startOtherRatings).responseSiteHookFunction(collectEnglishMovieTitles).ratingRequestModifier(tmdbRequestModifier).numberOfResultsIncluded(5).blacklist(new RegExp(/The Movie Database/i)).blacklist(new RegExp(/TMDb/i)).blacklist(new RegExp(/Recommended Movies/i));
-var imdbRating = new Rating().ratingSite('IMDB').ratingSiteAbbr('IMDB').ratingRange('10').ratingId('imdb').ratingDivId(C_ID_IMDBRATING).websiteURL('www.imdb.com').googleRating().numberOfResultsIncluded(5).blacklist(new RegExp(/IMDb/i)).blacklist(new RegExp(/TV Movie/i)).ratingRequestModifier(imdbRequestModifier);
-var rtRating = new Rating().ratingSite('rotten tomatoes').ratingSiteAbbr('RT').ratingId('rt').ratingDivId(C_ID_RTRATINGS).websiteURL('www.rottentomatoes.com/m/').scrapperFunction(rtRatingScrapper).numberOfResultsIncluded(5).blacklist(new RegExp(/Rotten Tomatoes/i)).ratingRequestModifier(rtRequestModifier);
-var mcRating = new Rating().ratingSite('metacritic').ratingSiteAbbr('MC').ratingId('mc').ratingDivId(C_ID_MCRATINGS).websiteURL('www.metacritic.com/movie/').scrapperFunction(mcRatingScrapper).numberOfResultsIncluded(5).blacklist(new RegExp(/Metacritic/i)).ratingRequestModifier(mcRequestModifier);
-var wikiInfo = new Rating().ratingSite('Wikipedia').ratingSiteAbbr('wiki').ratingId('wiki').ratingDivId(C_ID_WIKIINFO).websiteURL('en.wikipedia.org').info().description('The Free Encyclopedia').numberOfResultsIncluded(5).blacklist(new RegExp(/(film)?\s*Wikipedia,? the free encyclopedia/i)).googleRequestModifier(wikiRequestModifier);
+var tmdbRating = new Rating().ratingSite('TMDB').ratingSiteAbbr('TMDB').ratingId('tmdb').ratingDivId(C_ID_TMDBRATING).websiteURL('www.themoviedb.org/movie/').scrapperFunction(tmdbRatingScrapper).googleHookFunction(startOtherRatings).responseSiteHookFunction(collectEnglishMovieTitles).ratingRequestModifier(tmdbRequestModifier).numberOfResultsIncluded(5).blacklist(new RegExp(/\s?TMDb$/i)).blacklist(new RegExp(/(?:(?=The Movie Database)The Movie Database|(?=The Movie)The Movie|(?=The)The)$/i)).blacklist(new RegExp(/Recommended Movies/i));
+var imdbRating = new Rating().ratingSite('IMDB').ratingSiteAbbr('IMDB').ratingRange('10').ratingId('imdb').ratingDivId(C_ID_IMDBRATING).websiteURL('www.imdb.com/title').googleRating().numberOfResultsIncluded(5).blacklist(new RegExp(/IMDb$/i)).blacklist(new RegExp(/TV Movie/i)).ratingRequestModifier(imdbRequestModifier);
+var rtRating = new Rating().ratingSite('rotten tomatoes').ratingSiteAbbr('RT').ratingId('rt').ratingDivId(C_ID_RTRATINGS).websiteURL('www.rottentomatoes.com/m/').scrapperFunction(rtRatingScrapper).numberOfResultsIncluded(5).blacklist(new RegExp(/(?:(?=Rotten Tomatoes)Rotten Tomatoes|(?=Rotten)Rotten)$/i)).ratingRequestModifier(rtRequestModifier);
+var mcRating = new Rating().ratingSite('metacritic').ratingSiteAbbr('MC').ratingId('mc').ratingDivId(C_ID_MCRATINGS).websiteURL('www.metacritic.com/movie/').scrapperFunction(mcRatingScrapper).numberOfResultsIncluded(5).blacklist(new RegExp(/Metacritic$/i)).blacklist(new RegExp(/Reviews/i)).ratingRequestModifier(mcRequestModifier);
+var wikiInfo = new Rating().ratingSite('Wikipedia').ratingSiteAbbr('wiki').ratingId('wiki').ratingDivId(C_ID_WIKIINFO).websiteURL('en.wikipedia.org').info().description('The Free Encyclopedia').numberOfResultsIncluded(5).blacklist(new RegExp(/(film)?\s*(?:(?=Wikipedia the free encyclopedia)Wikipedia the free encyclopedia|(?=Wikipedia the free)Wikipedia the free|(?=Wikipedia)Wikipedia)$/i)).googleRequestModifier(wikiRequestModifier);
 
 MPExtension.addRating("imdb", imdbRating, [[C_ID_IMDBRATING, 'IMDB Bewertungen anzeigen']]);
 MPExtension.addRating("rt", rtRating, [[C_ID_RTTOMATOMETER, 'RT Tomatormeter anzeigen'],[C_ID_RTCRITICSRATING, 'RT Kritiker Bewertungen anzeigen'],[C_ID_RTCOMMUNITYRATING, 'RT Community Bewertungen anzeigen']]);
@@ -116,9 +117,13 @@ function collectEnglishMovieTitles(tmdbResponse) {
                         title = titleDiv.childNodes[0].nodeValue;
                 }
         }
+        var length = Rating.movieAliases.length;
         if(title !== null) {
                 title = Refinery.refineString(title);
                 pushUniqueObjectToArray(Rating.movieAliases, title);
+        }
+        if(length < Rating.movieAliases.length) {
+                MPExtension.addTitleToMP(title);
         }
 
         startOtherRatings(); // start rating search
@@ -126,21 +131,24 @@ function collectEnglishMovieTitles(tmdbResponse) {
 
 /* Request modifiers - transform the request URL */
 function tmdbRequestModifier(url) {
-        var refinedUrl = url.match(/(https?:\/\/)?www\.imdb\.com\/title\/.*?\//);
+        var refinedUrl = url.match(/(https?:\/\/)?www\.themoviedb\.org\/movie\/.*?(?=(\?|\/))/);
         if(refinedUrl !== null) {
-                return refinedUrl[0].replace(/(\?language=[a-z]{2}(-[A-Z]{2})?|\/de$)/, '?language=en'); //the english website is needed
+                refinedUrl = refinedUrl[0];
+        } else {
+                refinedUrl = url;
         }
-        return url.replace(/(\?language=[a-z]{2}(-[A-Z]{2})?|\/de$)/, '?language=en'); //the english website is needed
+        
+        return refinedUrl.replace(/((\?language=[a-z]{2}(-[A-Z]{2})?|\/de)?$)/, '?language=en'); //the english website is needed
 }
 function imdbRequestModifier(url) {
-        var refinedUrl = url.match(/(https?:\/\/)?www\.imdb\.com\/title\/.*?\//);
+        var refinedUrl = url.match(/(https?:\/\/)?www\.imdb\.com\/title\/.*?(?=(\?|\/))/);
         if(refinedUrl !== null) {
                 return refinedUrl[0];
         }
         return url;
 }
 function mcRequestModifier(url) {
-        var refinedUrl = url.match(/(https?:\/\/)?www\.metacritic\.com\/movie\/.*?\//);
+        var refinedUrl = url.match(/(https?:\/\/)?www\.metacritic\.com\/movie\/.*?(?=(\?|\/))/);
         if(refinedUrl !== null) {
                 return refinedUrl[0];
         }
@@ -148,7 +156,7 @@ function mcRequestModifier(url) {
 }
 
 function rtRequestModifier(url) {
-        var refinedUrl = url.match(/(https?:\/\/)?www\.rottentomatoes\.com\/m\/.*?\//);
+        var refinedUrl = url.match(/(https?:\/\/)?www\.rottentomatoes\.com\/m\/.*?(?=(\?|\/))/);
         if(refinedUrl !== null) {
                 return refinedUrl[0];
         }
@@ -267,6 +275,56 @@ function MPExtension() {
                 }
                 
                 return true;
+        }
+        
+        this.addTitleToMP = function(title) {
+                var movieData = document.getElementsByClassName('movie--data');
+                var atTitles = movieData[0];
+                atTitles.children[0].style.display = "inline-block";
+                
+                var extTitleDiv = document.createElement("div");
+                var extTitle = document.createElement("span");
+                var infoDiv = document.createElement("span");
+                
+                extTitleDiv.style.display = "inline-block";
+                extTitle.innerHTML =" / "+title;
+                extTitle.style.display = "inherit";
+                
+                infoDiv.innerHTML = "?";
+                infoDiv.style.width = "14px"
+                infoDiv.style.height = "14px"
+                infoDiv.style.textAlign = "center"
+                infoDiv.style.borderRadius = "7px";
+                infoDiv.style.fontSize = "12px";
+                infoDiv.style.color = "#FFFFFF";
+                infoDiv.style.background = "#9C9C9C";
+                infoDiv.style.display = "inherit";
+                infoDiv.style.margin = "0px 0px 0px 3px"
+                
+                var tooltipText = "English title by TMDb"
+                var tooltip = document.createElement('span');
+                tooltip.innerHTML = tooltipText;
+                tooltip.style.visibility = "hidden";
+                tooltip.style.width = "140px";
+                tooltip.style.heigth = "14px";
+                tooltip.style.color = "#FFFFFF";
+                tooltip.style.textAlign = "center";
+                tooltip.style.margin = "0px 0px 0px 8px";
+                tooltip.style.borderRadius = "6px";
+                tooltip.style.background = "#696969";
+                tooltip.style.position = "absolute";
+                tooltip.style.zIndex = "1";
+                tooltip.style.opacity = "0";
+                tooltip.style.transition = "opacity 1s";
+                tooltip.style.display = "inherit";
+                
+                infoDiv.appendChild(tooltip);
+                infoDiv.onmouseover = function(){tooltip.style.visibility = "visible"; tooltip.style.opacity = "1";};
+                infoDiv.onmouseout = function(){tooltip.style.visibility = "hidden"; tooltip.style.opacity = "0";};
+                
+                extTitleDiv.appendChild(extTitle);
+                extTitleDiv.appendChild(infoDiv);
+                atTitles.appendChild(extTitleDiv);
         }
         
         this.appendNewContainer = function(id) {
@@ -782,14 +840,19 @@ function Rating () {
                                 }
                         }
                 }
-                if(bestCorrectnessResult >= 0.5) {
+                var indicator = bestCorrectnessResult * bestSpamResult;
+                if(indicator >= 0.25) {
                         if (DEBUG_MODE && VERBOSE) {
-                                log("Final result: "+(bestResultIndex+1)+". Correct: "+bestCorrectnessResult+" Spam: "+bestSpamResult);
+                                log("Final result: "+(bestResultIndex+1)+". Correct: "+bestCorrectnessResult+" Spam: "+bestSpamResult+" Result: "+indicator);
                         }
-                        if(bestCorrectnessResult == 1) { //all words were found
-                	        estCorrectness = Rating.correctness.HIGH;
-                        } else if(bestCorrectnessResult < 1) { //less were found (not a perfect match)
-                	        estCorrectness = Rating.correctness.MIDDLE;
+                        if(indicator == 1) { //all words were found
+                	        estCorrectness = Rating.correctness.PERFECT;
+                        } else if(indicator >= 0.75) {
+                	        estCorrectness = Rating.correctness.GOOD;
+                        } else if(indicator >= 0.5) {
+                	        estCorrectness = Rating.correctness.OKAY;
+                        } else if(indicator >= 0.25) {
+                	        estCorrectness = Rating.correctness.BAD;
                         }
                         return [googleResults[bestResultIndex].getElementsByTagName("a")[0].href, googleResults[bestResultIndex]];
                 } else {
@@ -801,7 +864,7 @@ function Rating () {
         /* Standard scrapper for Googles ratings */
 
                 var ratingDiv = googleResult.querySelector("div.f.slp")
-                if(ratingDiv !== null) {
+                if(ratingDiv !== null && ratingDiv.childNodes.length >= 2) {
                         var ratingText = Refinery.refineHTML(ratingDiv.childNodes[1].nodeValue);
                         ratingText = ratingText.match(/\d,?\d?\/10 - \d(\d|\.)*/);
                         if(ratingText !== null) {
@@ -1082,15 +1145,22 @@ function MPRatingFactory() {
                 circle.style.width = "10px";
                 circle.style.height = "10px";
                 circle.style.borderRadius = "5px";
-                if(correctness == Rating.correctness.HIGH) {
+                if(correctness == Rating.correctness.PERFECT) {
                         circle.style.color = "#00FF00";
                         circle.style.background = "#00FF00";
-                        tooltipText = tooltipText+"High";
-                }
-                if(correctness == Rating.correctness.MIDDLE) {
+                        tooltipText = tooltipText+"Perfect";
+                } else if(correctness == Rating.correctness.GOOD) {
+                        circle.style.color = "#3FBF00";
+                        circle.style.background = "#3FBF00";
+                        tooltipText = tooltipText+"Good";
+                } else if(correctness == Rating.correctness.OKAY) {
                         circle.style.color = "#FFFF00";
                         circle.style.background = "#FFFF00";
-                        tooltipText = tooltipText+"Middle";
+                        tooltipText = tooltipText+"Okay";
+                }else if(correctness == Rating.correctness.BAD) {
+                        circle.style.color = "#FF7F00";
+                        circle.style.background = "#FF7F00";
+                        tooltipText = tooltipText+"Bad";
                 }
                 
                 var tooltip = document.createElement('span');
