@@ -67,7 +67,7 @@ Rating.movieYear = movieData[1];
 //Rating.correctness = {HIGH: 0, MIDDLE: 1, LOW: 2};
 Rating.correctness = {PERFECT: 0, GOOD: 1, OKAY: 2, BAD: 3, POOR: 4};
 
-var tmdbRating = new Rating().ratingSite('TMDB').ratingSiteAbbr('TMDB').ratingId('tmdb').ratingDivId(C_ID_TMDBRATING).websiteURL('www.themoviedb.org/movie/').scrapperFunction(tmdbRatingScrapper).googleHookFunction(startOtherRatings).responseSiteHookFunction(collectEnglishMovieTitles).ratingRequestModifier(tmdbRequestModifier).numberOfResultsIncluded(5).blacklist(new RegExp(/\s?TMDb$/i)).blacklist(new RegExp(/(?:(?=The Movie Database)The Movie Database|(?=The Movie)The Movie|(?=The)The)$/i)).blacklist(new RegExp(/Recommended Movies/i));
+var tmdbRating = new Rating().ratingSite('TMDB').ratingSiteAbbr('TMDB').ratingId('tmdb').ratingDivId(C_ID_TMDBRATING).websiteURL('www.themoviedb.org/movie/').scrapperFunction(tmdbRatingScrapper).googleHookFunction(startOtherRatings).responseSiteHookFunction(collectEnglishMovieTitles).ratingRequestModifier(tmdbRequestModifier).numberOfResultsIncluded(5).blacklist(new RegExp(/\s?TMDb$/i)).blacklist(new RegExp(/(?:(?=The Movie Database)The Movie Database|(?=The Movie)The Movie|(?=The)The)$/i)).blacklist(new RegExp(/Recommended Movies/i)).ratingLinkModifier(tmdbLinkModifier);
 var imdbRating = new Rating().ratingSite('IMDB').ratingSiteAbbr('IMDB').ratingRange('10').ratingId('imdb').ratingDivId(C_ID_IMDBRATING).websiteURL('www.imdb.com/title').googleRating().numberOfResultsIncluded(5).blacklist(new RegExp(/IMDb$/i)).blacklist(new RegExp(/TV Movie/i)).ratingRequestModifier(imdbRequestModifier);
 var rtRating = new Rating().ratingSite('rotten tomatoes').ratingSiteAbbr('RT').ratingId('rt').ratingDivId(C_ID_RTRATINGS).websiteURL('www.rottentomatoes.com/m/').scrapperFunction(rtRatingScrapper).numberOfResultsIncluded(5).blacklist(new RegExp(/(?:(?=Rotten Tomatoes)Rotten Tomatoes|(?=Rotten)Rotten)$/i)).ratingRequestModifier(rtRequestModifier);
 var mcRating = new Rating().ratingSite('metacritic').ratingSiteAbbr('MC').ratingId('mc').ratingDivId(C_ID_MCRATINGS).websiteURL('www.metacritic.com/movie/').scrapperFunction(mcRatingScrapper).numberOfResultsIncluded(5).blacklist(new RegExp(/Metacritic$/i)).blacklist(new RegExp(/Reviews/i)).ratingRequestModifier(mcRequestModifier);
@@ -105,32 +105,54 @@ function collectEnglishMovieTitles(tmdbResponse) {
         }
         
         //query english titles
-        var title = null;
-        if(tmdbResponse.baseURI.search("/release-info") > 0) { //release-info page
-                var titleSpan = tmdbResponse.querySelector("h2.title > a > span[itemprop=name]");
-                if(titleSpan !== null) {
-                        title = titleSpan.innerHTML;
+        var titles = [];
+        var length;
+        var match;
+        var country;
+        var type;
+        
+        var titleSpan = tmdbResponse.querySelector("span[itemprop=name]");
+        if(titleSpan !== null) {
+                match = titleSpan.innerHTML;
+                length = Rating.movieAliases.length;
+                pushStringToSet(Rating.movieAliases, Refinery.refineString(match));
+                moveStringToFirstPosition(Rating.movieAliases, Refinery.refineString(match));
+                if(length < Rating.movieAliases.length) {
+                        MPExtension.addTitleToMP(match);
                 }
-        } else { // common movie page
-                var titleDiv = tmdbResponse.querySelector("div.title > h2 > a");
-                if(titleDiv !== null) {
-                        title = titleDiv.childNodes[0].nodeValue;
+        }
+        
+        var table = tmdbResponse.querySelectorAll("table.new > tbody");
+        if(table !== null && table.length >= 2) {
+                table = table[1];
+                for(var i = 0; i < table.children.length; i++) {
+                        country = table.children[i].children[2].innerHTML;
+                        type = table.children[i].children[1].innerHTML;
+                        if(country == "US" && (type == "" || type == "short title" || type =="Modern Title")) {
+                                match = table.children[i].children[0].innerHTML;
+                                length = Rating.movieAliases.length;
+                                addStringToSet(Rating.movieAliases, Refinery.refineString(match));
+                                if(length < Rating.movieAliases.length) {
+                                        MPExtension.addTitleToMP(match);
+                                }
+                        }
                 }
-        }
-        var length = Rating.movieAliases.length;
-        if(title !== null) {
-                title = Refinery.refineString(title);
-                pushUniqueObjectToArray(Rating.movieAliases, title);
-        }
-        if(length < Rating.movieAliases.length) {
-                MPExtension.addTitleToMP(title);
-        }
 
+        }
         startOtherRatings(); // start rating search
 }
 
 /* Request modifiers - transform the request URL */
 function tmdbRequestModifier(url) {
+        var refinedUrl = url.match(/(https?:\/\/)?www\.themoviedb\.org\/movie\/.*?(?=(\?|\/))/);
+        if(refinedUrl !== null) {
+                refinedUrl = refinedUrl[0];
+        } else {
+                return url.replace(/((\?language=[a-z]{2}(-[A-Z]{2})?|\/de)?$)/, '?language=en');
+        }
+        return refinedUrl + "/release-info?language=en";
+}
+function tmdbLinkModifier(url) {
         var refinedUrl = url.match(/(https?:\/\/)?www\.themoviedb\.org\/movie\/.*?(?=(\?|\/))/);
         if(refinedUrl !== null) {
                 refinedUrl = refinedUrl[0];
@@ -202,10 +224,10 @@ function MPExtension() {
                 
                 if(getInfoFromLocalStorage(C_SHOWRATINGS)){ //Ask local storage if the ratings should be visible and which text should be displayed
                         extRatingsDiv.style.display = 'inline';
-                        toggleContentButton.innerHTML = 'Externe Bewertungen verbergen';
+                        toggleContentButton.innerHTML = 'Suche deaktivieren';
                 } else {
                         extRatingsDiv.style.display = 'none';
-                        toggleContentButton.innerHTML = 'Externe Bewertungen anzeigen';
+                        toggleContentButton.innerHTML = 'Suche aktivieren';
                 }
                 toggleContentButton.onclick = onToggleContentButtonClick;
                 
@@ -278,53 +300,67 @@ function MPExtension() {
         }
         
         this.addTitleToMP = function(title) {
-                var movieData = document.getElementsByClassName('movie--data');
-                var atTitles = movieData[0];
-                atTitles.children[0].style.display = "inline-block";
+                var tmdbTitles = document.querySelector("#tmdbTitles > div")
                 
-                var extTitleDiv = document.createElement("div");
-                var extTitle = document.createElement("span");
-                var infoDiv = document.createElement("span");
+                var titleSpan = document.createElement("span");
+                titleSpan.innerHTML ="/ "+title;
+                titleSpan.style.marginLeft = "3px";
+                titleSpan.style.display = "inherit";
                 
-                extTitleDiv.style.display = "inline-block";
-                extTitle.innerHTML =" / "+title;
-                extTitle.style.display = "inherit";
+                if(document.getElementById("tmdbTitles") == null) {
                 
-                infoDiv.innerHTML = "?";
-                infoDiv.style.width = "14px"
-                infoDiv.style.height = "14px"
-                infoDiv.style.textAlign = "center"
-                infoDiv.style.borderRadius = "7px";
-                infoDiv.style.fontSize = "12px";
-                infoDiv.style.color = "#FFFFFF";
-                infoDiv.style.background = "#9C9C9C";
-                infoDiv.style.display = "inherit";
-                infoDiv.style.margin = "0px 0px 0px 3px"
-                
-                var tooltipText = "English title by TMDb"
-                var tooltip = document.createElement('span');
-                tooltip.innerHTML = tooltipText;
-                tooltip.style.visibility = "hidden";
-                tooltip.style.width = "140px";
-                tooltip.style.heigth = "14px";
-                tooltip.style.color = "#FFFFFF";
-                tooltip.style.textAlign = "center";
-                tooltip.style.margin = "0px 0px 0px 8px";
-                tooltip.style.borderRadius = "6px";
-                tooltip.style.background = "#696969";
-                tooltip.style.position = "absolute";
-                tooltip.style.zIndex = "1";
-                tooltip.style.opacity = "0";
-                tooltip.style.transition = "opacity 1s";
-                tooltip.style.display = "inherit";
-                
-                infoDiv.appendChild(tooltip);
-                infoDiv.onmouseover = function(){tooltip.style.visibility = "visible"; tooltip.style.opacity = "1";};
-                infoDiv.onmouseout = function(){tooltip.style.visibility = "hidden"; tooltip.style.opacity = "0";};
-                
-                extTitleDiv.appendChild(extTitle);
-                extTitleDiv.appendChild(infoDiv);
-                atTitles.appendChild(extTitleDiv);
+                        var movieData = document.getElementsByClassName('movie--data');
+                        var atTitles = movieData[0];
+                        atTitles.children[0].style.display = "inline-block";
+
+                        tmdbTitles = document.createElement("div");
+                        tmdbTitles.style.display = "inline-block";
+                        tmdbTitles.id = "tmdbTitles";
+                        
+                        var titles = document.createElement("div");
+                        var info = document.createElement("span");
+                        
+                        titles.style.display = "inherit";
+                        titles.appendChild(titleSpan);
+                        
+                        info.innerHTML = "?";
+                        info.style.width = "14px"
+                        info.style.height = "14px"
+                        info.style.textAlign = "center"
+                        info.style.borderRadius = "7px";
+                        info.style.fontSize = "12px";
+                        info.style.color = "#FFFFFF";
+                        info.style.background = "#9C9C9C";
+                        info.style.display = "inherit";
+                        info.style.margin = "0px 0px 0px 3px"
+
+                        var tooltipText = "Title from TMDb"
+                        var tooltip = document.createElement('span');
+                        tooltip.innerHTML = tooltipText;
+                        tooltip.style.visibility = "hidden";
+                        tooltip.style.width = "140px";
+                        tooltip.style.heigth = "14px";
+                        tooltip.style.color = "#FFFFFF";
+                        tooltip.style.textAlign = "center";
+                        tooltip.style.margin = "0px 0px 0px 8px";
+                        tooltip.style.borderRadius = "6px";
+                        tooltip.style.background = "#696969";
+                        tooltip.style.position = "absolute";
+                        tooltip.style.zIndex = "1";
+                        tooltip.style.opacity = "0";
+                        tooltip.style.transition = "opacity 1s";
+                        tooltip.style.display = "inherit";
+
+                        info.appendChild(tooltip);
+                        info.onmouseover = function(){tooltip.style.visibility = "visible"; tooltip.style.opacity = "1";};
+                        info.onmouseout = function(){tooltip.style.visibility = "hidden"; tooltip.style.opacity = "0";};
+
+                        tmdbTitles.appendChild(titles);
+                        tmdbTitles.appendChild(info);
+                        atTitles.appendChild(tmdbTitles);
+                } else {
+                        tmdbTitles.appendChild(titleSpan);
+                }
         }
         
         this.appendNewContainer = function(id) {
@@ -346,11 +382,11 @@ function MPExtension() {
                 var button = document.getElementById('toggleContentButton');
                 if(content.style.display == 'inline') { //toogling button description and local storage information
                         content.style.display = 'none';
-                        button.innerHTML = 'Externe Bewertungen anzeigen';
+                        button.innerHTML = 'Suche aktivieren';
                         setInfoInLocalStorage(C_SHOWRATINGS, false);
                 } else {
                         content.style.display = 'inline';
-                        button.innerHTML ='Externe Bewertungen verbergen';
+                        button.innerHTML ='Suche deaktivieren';
                         setInfoInLocalStorage(C_SHOWRATINGS, true);;
                         self.startRatingSearch();
                 }
@@ -471,8 +507,8 @@ function MPExtension() {
                 }
                 
                 var titles = [];
-                addUniqueObjectToArray(titles, Refinery.refineString(movieHeadline[0].innerHTML)); //MP movie title
-                getMovieAliases(movieData[0].children[0].innerHTML).forEach(function(currentValue, index, array){addUniqueObjectToArray(titles, Refinery.refineString(currentValue));}); //MP alternative titles
+                addStringToSet(titles, Refinery.refineString(movieHeadline[0].innerHTML)); //MP movie title
+                getMovieAliases(movieData[0].children[0].innerHTML).forEach(function(currentValue, index, array){addStringToSet(titles, Refinery.refineString(currentValue));}); //MP alternative titles
                 
                 var year;
                 var i = 0;
@@ -569,45 +605,51 @@ function MPExtension() {
         }
 }
 
-function addUniqueObjectToArray(array, object){
-/* Adds an object at the highest index of an array (simple JavaScript push)
-* The addition is done, when the object isn't found in the array, else the found object will swap index with the object at the highest index
-* Needed since the positioning of some objects is of importance
-*/
+function addStringToSet(array, string){
+/* Adds a string at the highest index of an array of unique strings (simple JavaScript push), if the string isn't found in it */
         var i = 0;
         var found = false;
+        var regEx = new RegExp("^"+string+"$", "i");
         while(i < array.length && found === false) {
-                if(array[i] == object)
-                        found = true;
-                i++;
-        }
-        if(found !== true) {
-                array.push(object);
-        } else if(array.length > 1){
-                var swap = array[array.length-1];
-                array[array.length-1] = object;
-                array[a-1] = swap;
-        }
-}
-
-function pushUniqueObjectToArray(array, object){
-/* Pushes an object to index 0 of an array
-* The addition is done, when the object isn't found in the array, else the found object will swap index with the object at index 0
-* Needed since the positioning of some objects is of importance
-*/
-        var i = 0;
-        var found = false;
-        while(i < array.length && found === false) {
-                if(array[i] == object) {
+                if(array[i].search(regEx) >= 0) {
                         found = true;
                 }
                 i++;
         }
         if(found !== true) {
-                array.unshift(object);
-        } else if(array.length > 1){
+                array.push(string);
+        }
+}
+
+function pushStringToSet(array, string){
+/* Pushes a string to index 0 of an array of unique strings, if the string isn't found in it */
+        var i = 0;
+        var found = false;
+        var regEx = new RegExp("^"+string+"$", "i");
+        while(i < array.length && found === false) {
+                if(array[i].search(regEx) >= 0) {
+                        found = true;
+                }
+                i++;
+        }
+        if(found !== true) {
+                array.unshift(string);
+        }
+}
+
+function moveStringToFirstPosition(array, string) {
+        var i = 0;
+        var found = false;
+        var regEx = new RegExp("^"+string+"$", "i");
+        while(i < array.length && found === false) {
+                if(array[i].search(regEx) >= 0) {
+                        found = true;
+                }
+                i++;
+        }
+        if(found === true && array.length > 1) {
                 var swap = array[0];
-                array[0] = object;
+                array[0] = string;
                 array[i-1] = swap;
         }
 }
@@ -641,6 +683,7 @@ function Rating () {
         var googleRequestModifier = function(url) {return url;}; 	//Modify Googles request URL
         var ratingRequest="";
         var ratingRequestModifier = function(url) {return url;};	//Modify the request URL of the rating website
+        var ratingLinkModifier = function(url) {return url;}; // Modify the Link to the rating website
         var ratingSourceTypes = {EXTERN: 0, GOOGLE: 1, INFO:2};		//Type of the rating; EXTERN for own rating scrapper, GOOGLE for standard Google scrapper, INFO for a information website without rating
         var ratingSourceType = ratingSourceTypes.EXTERN;		//Current type of the rating
         var numberOfResultsIncluded = 1;	//Number of Google results that should be included in a search
@@ -667,6 +710,7 @@ function Rating () {
         this.websiteURL = function(string) {websiteURL = string; return this;};
         this.googleRequestModifier = function(func) {googleRequestModifier = func; return this;};
         this.ratingRequestModifier = function(func) {ratingRequestModifier = func; return this;};
+        this.ratingLinkModifier = function(func) {ratingLinkModifier = func; return this;};
         this.externRating = function() {ratingSourceType = ratingSourceTypes.EXTERN; return this;};
         this.googleRating = function() {ratingSourceType = ratingSourceTypes.GOOGLE; return this;};
         this.info = function() {ratingSourceType = ratingSourceTypes.INFO; return this;};
@@ -742,15 +786,15 @@ function Rating () {
                 if(DEBUG_MODE) {
                         log("Rating site request successfull.");
                 }
-                //var ratingSiteHTML = Refinery.refineHTML(response.responseText);
                 var ratingSiteResponse = parseToHTMLElement(response.responseText)
                 if(responseSiteHookFunction !== null) {
                         responseSiteHookFunction(ratingSiteResponse);
                 }
                 if(scrapperFunction !== null) {
                         var rating = scrapperFunction(ratingSiteResponse, estCorrectness);
+                        var ratingRequest = ratingLinkModifier(request);
                         if(LINK_WEBSITES) {
-                                MPExtension.addRatingToContainer(ratingId, MPRatingFactory.wrapRatingWithLink(rating, request));
+                                MPExtension.addRatingToContainer(ratingId, MPRatingFactory.wrapRatingWithLink(rating, ratingRequest));
                         } else {
                                 MPExtension.addRatingToContainer(ratingId, rating);
                         }
@@ -1020,14 +1064,14 @@ function tmdbRatingScrapper(tmdbResponse, estCorrectness) {
         var rating = null;
         var ratingCount = null;
         
-        if(tmdbResponse.baseURI.search("/release-info") > 0) { //release-info page
-                var ratingSpan = tmdbResponse.querySelector("span[itemprop=ratingValue]");
-                var ratingCountSpan = tmdbResponse.querySelector("span[itemprop=ratingCount]");
-                if(ratingSpan !== null && ratingCountSpan !== null) {
-                        rating =  ratingSpan.innerHTML;
-                        ratingCount = ratingCountSpan.innerHTML;
-                }
-        } else { //common movie page
+        //release-info page
+        var ratingSpan = tmdbResponse.querySelector("span[itemprop=ratingValue]");
+        var ratingCountSpan = tmdbResponse.querySelector("span[itemprop=ratingCount]");
+        if(ratingSpan !== null && ratingCountSpan !== null) {
+                rating =  ratingSpan.innerHTML;
+                ratingCount = ratingCountSpan.innerHTML;
+        } else {
+                //common movie page
                 var ratingSpan = tmdbResponse.querySelector("span.rating");
                 if(ratingSpan !== null) {
                         rating = ratingSpan.innerHTML;
@@ -1226,7 +1270,7 @@ function Refinery() {
                 var refinedString = string;
                 refinedString = this.refineHTML(refinedString);
                 refinedString = refinedString.replace(/&amp;\s?/g, ''); //Delete encoded ampersand
-                refinedString = refinedString.replace(/(\?|'|"|,|-\s|\(|\)|\.|&|–\s|—\s)/g, ''); // Delete unwanted characters
+                refinedString = refinedString.replace(/(\?|'|"|,|\(|\)|\.|&|-|–|—)/g, ''); // Delete unwanted characters
                 refinedString = refinedString.replace(/(:)/g, ' ');
                 refinedString = this.trimWhitespaces(refinedString);
                 return refinedString;
@@ -1234,7 +1278,7 @@ function Refinery() {
         
         this.trimWhitespaces = function(string) {
         var refinedString = string;
-        refinedString = refinedString.replace(/\s\s+/, ' ');
+        refinedString = refinedString.replace(/\s\s+/g, ' ');
         refinedString = refinedString.replace(/(^\s+|\s+$)/g, ''); //Delete Whitespace at the beginning/end
         return refinedString;
         };
