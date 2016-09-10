@@ -21,7 +21,7 @@
 //
 // ==UserScript==
 // @name          MoviePilot Rating-Extension
-// @version       2.8
+// @version       2.9
 // @downloadURL   https://github.com/kevgaar/MoviePilot-Rating-Extension/raw/master/mp-ratingextension.user.js
 // @namespace     http://www.moviepilot.de/movies/*
 // @description   Script, mit dem die Bewertungen von IMDb und anderen Plattformen ermittelt und angezeigt werden sollen
@@ -30,7 +30,6 @@
 // @grant         GM_xmlhttpRequest
 
 // ==/UserScript==
-debugger;
 //-------Constants---------------
 //Div-Names from every single rating. Used to show/hide the ratings via a checkbox
 var C_SHOWRATINGS = 'showExtRatings';
@@ -45,8 +44,8 @@ var C_ID_MCCOMMUNITYRATING = 'mcComRating';
 var C_ID_TMDBRATING = 'tmdbRating';
 var C_ID_WIKIINFO = 'wikiInfo';
 
-var DEBUG_MODE = true;
-var VERBOSE = true;
+var DEBUG_MODE = false;
+var VERBOSE = false;
 //------/Constants---------------
 
 var Refinery = new Refinery();
@@ -64,12 +63,11 @@ if(movieData === null ) {
 // Static variables shared by all instances of Rating
 Rating.movieAliases = movieData[0];
 Rating.movieYear = movieData[1];
-//Rating.correctness = {HIGH: 0, MIDDLE: 1, LOW: 2};
 Rating.correctness = {PERFECT: 0, GOOD: 1, OKAY: 2, BAD: 3, POOR: 4};
 
 var tmdbRating = new Rating().ratingSite('TMDB').ratingSiteAbbr('TMDB').ratingId('tmdb').ratingDivId(C_ID_TMDBRATING).websiteURL('www.themoviedb.org/movie/').scrapperFunction(tmdbRatingScrapper).googleHookFunction(startOtherRatings).responseSiteHookFunction(collectEnglishMovieTitles).ratingRequestModifier(tmdbRequestModifier).numberOfResultsIncluded(5).blacklist(new RegExp(/\s?TMDb$/i)).blacklist(new RegExp(/(?:(?=The Movie Database)The Movie Database|(?=The Movie)The Movie|(?=The)The)$/i)).blacklist(new RegExp(/Recommended Movies/i)).ratingLinkModifier(tmdbLinkModifier);
 var imdbRating = new Rating().ratingSite('IMDB').ratingSiteAbbr('IMDB').ratingRange('10').ratingId('imdb').ratingDivId(C_ID_IMDBRATING).websiteURL('www.imdb.com/title').googleRating().numberOfResultsIncluded(5).blacklist(new RegExp(/IMDb$/i)).blacklist(new RegExp(/TV Movie/i)).ratingRequestModifier(imdbRequestModifier);
-var rtRating = new Rating().ratingSite('rotten tomatoes').ratingSiteAbbr('RT').ratingId('rt').ratingDivId(C_ID_RTRATINGS).websiteURL('www.rottentomatoes.com/m/').scrapperFunction(rtRatingScrapper).numberOfResultsIncluded(5).blacklist(new RegExp(/(?:(?=Rotten Tomatoes)Rotten Tomatoes|(?=Rotten)Rotten)$/i)).ratingRequestModifier(rtRequestModifier);
+var rtRating = new Rating().ratingSite('rotten tomatoes').ratingSiteAbbr('RT').ratingId('rt').ratingDivId(C_ID_RTRATINGS).websiteURL('www.rottentomatoes.com/m/').scrapperFunction(rtRatingScrapper).numberOfResultsIncluded(5).blacklist(new RegExp(/(?:(?=Rotten Tomatoes)Rotten Tomatoes|(?=Rotten)Rotten)$/i)).blacklist(new RegExp(Rating.movieYear+ " Original", "i")).ratingRequestModifier(rtRequestModifier);
 var mcRating = new Rating().ratingSite('metacritic').ratingSiteAbbr('MC').ratingId('mc').ratingDivId(C_ID_MCRATINGS).websiteURL('www.metacritic.com/movie/').scrapperFunction(mcRatingScrapper).numberOfResultsIncluded(5).blacklist(new RegExp(/Metacritic$/i)).blacklist(new RegExp(/Reviews/i)).ratingRequestModifier(mcRequestModifier);
 var wikiInfo = new Rating().ratingSite('Wikipedia').ratingSiteAbbr('wiki').ratingId('wiki').ratingDivId(C_ID_WIKIINFO).websiteURL('en.wikipedia.org').info().description('The Free Encyclopedia').numberOfResultsIncluded(5).blacklist(new RegExp(/(film)?\s*(?:(?=Wikipedia the free encyclopedia)Wikipedia the free encyclopedia|(?=Wikipedia the free)Wikipedia the free|(?=Wikipedia)Wikipedia)$/i)).googleRequestModifier(wikiRequestModifier);
 
@@ -300,14 +298,8 @@ function MPExtension() {
         }
         
         this.addTitleToMP = function(title) {
-                var tmdbTitles = document.querySelector("#tmdbTitles > div")
-                
-                var titleSpan = document.createElement("span");
-                titleSpan.innerHTML ="/ "+title;
-                titleSpan.style.marginLeft = "3px";
-                titleSpan.style.display = "inherit";
-                
-                if(document.getElementById("tmdbTitles") == null) {
+                var titlesTooltip = document.querySelector("#titlesTooltip")
+                if(titlesTooltip == null) {
                 
                         var movieData = document.getElementsByClassName('movie--data');
                         var atTitles = movieData[0];
@@ -317,11 +309,7 @@ function MPExtension() {
                         tmdbTitles.style.display = "inline-block";
                         tmdbTitles.id = "tmdbTitles";
                         
-                        var titles = document.createElement("div");
                         var info = document.createElement("span");
-                        
-                        titles.style.display = "inherit";
-                        titles.appendChild(titleSpan);
                         
                         info.innerHTML = "?";
                         info.style.width = "14px"
@@ -334,14 +322,13 @@ function MPExtension() {
                         info.style.display = "inherit";
                         info.style.margin = "0px 0px 0px 3px"
 
-                        var tooltipText = "Title from TMDb"
+                        var tooltipText = "<b>Titles from TMDb:</b><br>- "+title;
                         var tooltip = document.createElement('span');
+                        tooltip.id = "titlesTooltip";
                         tooltip.innerHTML = tooltipText;
                         tooltip.style.visibility = "hidden";
-                        tooltip.style.width = "140px";
-                        tooltip.style.heigth = "14px";
                         tooltip.style.color = "#FFFFFF";
-                        tooltip.style.textAlign = "center";
+                        tooltip.style.textAlign = "left";
                         tooltip.style.margin = "0px 0px 0px 8px";
                         tooltip.style.borderRadius = "6px";
                         tooltip.style.background = "#696969";
@@ -355,11 +342,10 @@ function MPExtension() {
                         info.onmouseover = function(){tooltip.style.visibility = "visible"; tooltip.style.opacity = "1";};
                         info.onmouseout = function(){tooltip.style.visibility = "hidden"; tooltip.style.opacity = "0";};
 
-                        tmdbTitles.appendChild(titles);
                         tmdbTitles.appendChild(info);
                         atTitles.appendChild(tmdbTitles);
                 } else {
-                        tmdbTitles.appendChild(titleSpan);
+                        titlesTooltip.innerHTML += "<br>- "+title;
                 }
         }
         
@@ -725,6 +711,7 @@ function Rating () {
         /* Kick off the search */
                 googleRequest = "https://www.google.de/search?q=site:"+websiteURL+"+"+Rating.movieAliases[0].replace(/ /g,"+")+((Rating.movieYear !== '') ? "+"+Rating.movieYear : '');
                 googleRequest = googleRequestModifier(googleRequest);
+                googleRequest = Refinery.encode(googleRequest);
                 if(DEBUG_MODE) {
                         log("Google request: "+googleRequest);
                 }
@@ -1259,6 +1246,39 @@ function MPRatingFactory() {
 function Refinery() {
 /* Collection of methods to refine several types of character sequences */
         
+        var pattern = [];
+        
+        function addPattern(searchValue, newValue) {
+                var regExp = new RegExp(searchValue, "g");
+                pattern.push({searchValue, newValue, regExp});
+        }
+        addPattern("%E2%80%93",'-');
+        addPattern("%25E2%2580%2593",'–');
+        addPattern("%3C",'<');
+        addPattern("%3E",'>');
+        addPattern("%22",'"');
+        addPattern("%20",' ');
+        addPattern("&#x27;","'");
+        addPattern("&#39;","'");
+        
+        addPattern("%C3%84","Ä"); //%C4|&Auml;|&#196;|
+        addPattern("%C3%A4","ä"); //%E4|&auml;|&#228;|
+        addPattern("%C3%96","Ö"); //%D6|&Ouml;|&#214;|
+        addPattern("%C3%B6","ö"); //%F6|&ouml;|&#246;|
+        addPattern("%C3%9C","Ü"); //%DC|&Uuml;|&#220;|
+        addPattern("%C3%BC","ü"); //%FC|&uuml;|&#252;|
+        
+        addPattern("%C3%81","Á");
+        addPattern("%C3%A1","á");
+        addPattern("%C3%89","É");
+        addPattern("%C3%A9","é");
+        addPattern("%C3%8D","Í");
+        addPattern("%C3%AD","í");
+        addPattern("%C3%93","Ó");
+        addPattern("%C3%B3","ó");
+        addPattern("%C3%9A","Ú");
+        addPattern("%C3%BA","ú");
+        
         this.refineTitle = function(title) {
         /* Refine movie titles of MP */
                 var refinedTitle = title.split("/ AT:")[0];  // Delete "AT" for "alternative titles"
@@ -1277,10 +1297,10 @@ function Refinery() {
         };
         
         this.trimWhitespaces = function(string) {
-        var refinedString = string;
-        refinedString = refinedString.replace(/\s\s+/g, ' ');
-        refinedString = refinedString.replace(/(^\s+|\s+$)/g, ''); //Delete Whitespace at the beginning/end
-        return refinedString;
+                var refinedString = string;
+                refinedString = refinedString.replace(/\s\s+/g, ' ');
+                refinedString = refinedString.replace(/(^\s+|\s+$)/g, ''); //Delete Whitespace at the beginning/end
+                return refinedString;
         };
         
         this.refineRating = function(rating) {
@@ -1309,18 +1329,31 @@ function Refinery() {
         
         this.refineHTML = function(html) {
         /* Refine HTML / edit encoded HTML */
-                var encodedHTML = encodeURI(html);
-                encodedHTML = encodedHTML.replace(/%E2%80%93/g,'-');
-                encodedHTML = encodedHTML.replace(/%25E2%2580%2593/g,'–');
-                encodedHTML = encodedHTML.replace(/%3C/g,'<');
-                encodedHTML = encodedHTML.replace(/%3E/g,'>');
-                encodedHTML = encodedHTML.replace(/%22/g,'"');
-                encodedHTML = encodedHTML.replace(/%20/g,' ');
-                encodedHTML = encodedHTML.replace(/&#x27;/g,"'");
-                encodedHTML = encodedHTML.replace(/&#39;/g,"'");
-                encodedHTML = encodedHTML.replace(/%(\d|[ABCDEF])(\d|[ABCDEF])/g,"");
-                return encodedHTML;
+                var refinedHTML = encodeURI(html); //force uniform HTML
+                refinedHTML = this.decode(refinedHTML); //use uniformed HTML to replace certain patterns (unicode/UTF-8/...) with known characters
+                refinedHTML = refinedHTML.replace(/%(\d|[ABCDEF])(\d|[ABCDEF])/g,""); //delete all other possible patterns
+                return refinedHTML;
         };
+        
+        this.encode = function(string) {
+        /* translate known characters to patterns (unicode/UTF-8/...)  */
+                var encodedString = string;
+                for(var i = 0; i < pattern.length; i++) {
+                        encodedString = encodedString.replace(pattern[i].newValue, pattern[i].searchValue);
+                }
+                return encodedString;
+        };
+        
+        this.decode = function(string) {
+        /* translate patterns (unicode/UTF-8/...) to known characters */
+                var decodedString = string;
+                for(var i = 0; i < pattern.length; i++) {
+                        decodedString = decodedString.replace(pattern[i].regExp, pattern[i].newValue);
+                }
+                return decodedString;
+        };
+        
+        return this;
 }
 
 //-----LOCALSTORAGE-ADAPTER------------
