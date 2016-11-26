@@ -1,5 +1,4 @@
 // Extension for MoviePilot to load and add ratings from other movie websites with the help of Google
-// 2016-08-08
 //
 // "THE MOVIE-WARE LICENSE" (Revision 42):
 // <rockschlumpf@googlemail.com> wrote this file. As long as you retain this notice you
@@ -21,7 +20,7 @@
 //
 // ==UserScript==
 // @name          MoviePilot Rating-Extension
-// @version       2.9
+// @version       2.10
 // @downloadURL   https://github.com/kevgaar/MoviePilot-Rating-Extension/raw/master/mp-ratingextension.user.js
 // @namespace     http://www.moviepilot.de/movies/*
 // @description   Script, mit dem die Bewertungen von IMDb und anderen Plattformen ermittelt und angezeigt werden sollen
@@ -30,6 +29,7 @@
 // @grant         GM_xmlhttpRequest
 
 // ==/UserScript==
+//debugger;
 //-------Constants---------------
 //Div-Names from every single rating. Used to show/hide the ratings via a checkbox
 var C_SHOWRATINGS = 'showExtRatings';
@@ -44,8 +44,8 @@ var C_ID_MCCOMMUNITYRATING = 'mcComRating';
 var C_ID_TMDBRATING = 'tmdbRating';
 var C_ID_WIKIINFO = 'wikiInfo';
 
-var DEBUG_MODE = false;
-var VERBOSE = false;
+var DEBUG_MODE = true;
+var VERBOSE = true;
 //------/Constants---------------
 
 var Refinery = new Refinery();
@@ -65,7 +65,7 @@ Rating.movieAliases = movieData[0];
 Rating.movieYear = movieData[1];
 Rating.correctness = {PERFECT: 0, GOOD: 1, OKAY: 2, BAD: 3, POOR: 4};
 
-var tmdbRating = new Rating().ratingSite('TMDB').ratingSiteAbbr('TMDB').ratingId('tmdb').ratingDivId(C_ID_TMDBRATING).websiteURL('www.themoviedb.org/movie/').scrapperFunction(tmdbRatingScrapper).googleHookFunction(startOtherRatings).responseSiteHookFunction(collectEnglishMovieTitles).ratingRequestModifier(tmdbRequestModifier).numberOfResultsIncluded(5).blacklist(new RegExp(/\s?TMDb$/i)).blacklist(new RegExp(/(?:(?=The Movie Database)The Movie Database|(?=The Movie)The Movie|(?=The)The)$/i)).blacklist(new RegExp(/Recommended Movies/i)).ratingLinkModifier(tmdbLinkModifier);
+var tmdbRating = new Rating().ratingSite('TMDB').ratingSiteAbbr('TMDB').ratingId('tmdb').ratingDivId(C_ID_TMDBRATING).websiteURL('www.themoviedb.org/movie/').scrapperFunction(tmdbRatingScrapper).googleHookFunction(startOtherRatings).responseSiteHookFunction(collectEnglishMovieTitles).numberOfResultsIncluded(5).blacklist(new RegExp(/\s?TMDb$/i)).blacklist(new RegExp(/(?:(?=The Movie Database)The Movie Database|(?=The Movie)The Movie|(?=The)The)$/i)).blacklist(new RegExp(/Recommended Movies/i)).ratingLinkModifier(tmdbLinkModifier).ratingRequestModifier(tmdbRequestModifier);
 var imdbRating = new Rating().ratingSite('IMDB').ratingSiteAbbr('IMDB').ratingRange('10').ratingId('imdb').ratingDivId(C_ID_IMDBRATING).websiteURL('www.imdb.com/title').googleRating().numberOfResultsIncluded(5).blacklist(new RegExp(/IMDb$/i)).blacklist(new RegExp(/TV Movie/i)).ratingRequestModifier(imdbRequestModifier);
 var rtRating = new Rating().ratingSite('rotten tomatoes').ratingSiteAbbr('RT').ratingId('rt').ratingDivId(C_ID_RTRATINGS).websiteURL('www.rottentomatoes.com/m/').scrapperFunction(rtRatingScrapper).numberOfResultsIncluded(5).blacklist(new RegExp(/(?:(?=Rotten Tomatoes)Rotten Tomatoes|(?=Rotten)Rotten)$/i)).blacklist(new RegExp(Rating.movieYear+ " Original", "i")).ratingRequestModifier(rtRequestModifier);
 var mcRating = new Rating().ratingSite('metacritic').ratingSiteAbbr('MC').ratingId('mc').ratingDivId(C_ID_MCRATINGS).websiteURL('www.metacritic.com/movie/').scrapperFunction(mcRatingScrapper).numberOfResultsIncluded(5).blacklist(new RegExp(/Metacritic$/i)).blacklist(new RegExp(/Reviews/i)).ratingRequestModifier(mcRequestModifier);
@@ -109,6 +109,19 @@ function collectEnglishMovieTitles(tmdbResponse) {
         var country;
         var type;
         
+        // default page
+        var titleDiv = tmdbResponse.querySelector("div.title > h2 > a ");
+        if (titleDiv !== null) {
+                var title = titleDiv.childNodes[0].nodeValue
+                length = Rating.movieAliases.length;
+                pushStringToSet(Rating.movieAliases, Refinery.refineString(title));
+                moveStringToFirstPosition(Rating.movieAliases, Refinery.refineString(title));
+                if(length < Rating.movieAliases.length) {
+                        MPExtension.addTitleToMP(match);
+                }
+        }
+        
+        // release-info page
         var titleSpan = tmdbResponse.querySelector("span[itemprop=name]");
         if(titleSpan !== null) {
                 match = titleSpan.innerHTML;
@@ -135,7 +148,6 @@ function collectEnglishMovieTitles(tmdbResponse) {
                                 }
                         }
                 }
-
         }
         startOtherRatings(); // start rating search
 }
@@ -148,7 +160,8 @@ function tmdbRequestModifier(url) {
         } else {
                 return url.replace(/((\?language=[a-z]{2}(-[A-Z]{2})?|\/de)?$)/, '?language=en');
         }
-        return refinedUrl + "/release-info?language=en";
+        //return refinedUrl + "/release-info?language=en";
+        return refinedUrl + "?language=en";
 }
 function tmdbLinkModifier(url) {
         var refinedUrl = url.match(/(https?:\/\/)?www\.themoviedb\.org\/movie\/.*?(?=(\?|\/))/);
@@ -215,6 +228,7 @@ function MPExtension() {
                 var hr2 = document.createElement('hr');
                 var toggleContentButton = createElementWithId('span', 'toggleContentButton');
                 var showSettingsButton = createElementWithId('span', 'settingsButton');
+                var toStringButton = createElementWithId('span', 'toStringButton');
                 
                 ratingExtensionControlDiv.style.margin = '0px 0px 0px 25px';
                 toggleContentButton.style.color = '#9C9C9C';
@@ -234,6 +248,11 @@ function MPExtension() {
                 showSettingsButton.innerHTML = 'Einstellungen';
                 showSettingsButton.onclick = onSettingButtonClick;
                 
+                toStringButton.style.color = '#9C9C9C';
+                toStringButton.style.cursor = 'pointer';
+                toStringButton.innerHTML = 'toString';
+                toStringButton.onclick = onToStringButtonClick;
+                
                 hr1.style.margin = '5px 0px 5px 0px';
                 hr2.style.margin = '5px 0px 5px 0px';
                 
@@ -243,6 +262,8 @@ function MPExtension() {
                 ratingExtensionControlDiv.appendChild(toggleContentButton);
                 ratingExtensionControlDiv.appendChild(document.createTextNode(' | '));
                 ratingExtensionControlDiv.appendChild(showSettingsButton);
+                ratingExtensionControlDiv.appendChild(document.createTextNode(' | '));
+                ratingExtensionControlDiv.appendChild(toStringButton);
                 ratingExtensionDiv.appendChild(ratingExtensionControlDiv);
                 parent.insertBefore(ratingExtensionDiv, bewertung.nextSibling);
                 
@@ -274,6 +295,9 @@ function MPExtension() {
                 criticsCount.style.margin  = "0px 25px 0px 25px";
                 criticsCount.style.padding = "0px";
                 criticsCount.style.float   = "left";
+                
+                
+                criticsCount.children[1].replaceChild(document.createTextNode("Kritiker"), criticsCount.children[1].childNodes[0]);
                 
                 contentCount.style.width   = "180px";
                 contentCount.style.margin  = "0px 25px 0px 25px";
@@ -588,6 +612,51 @@ function MPExtension() {
                 } else if(DEBUG_MODE) {
                         console.log("Rating unknown.")
                 }
+        };
+        
+        function onToStringButtonClick() {
+                var string = ratingsToString();
+                window.prompt("Copy to clipboard: Ctrl+C, Enter", string);
+        };
+        
+        
+        function ratingsToString() {
+                var resultString = "";
+                var mpCommunity = document.querySelector("div.contentcount");
+                var otherRatings = document.querySelectorAll("div.criticscount");
+                
+                var rating = mpCommunity.children[0].innerHTML;
+                var ratingRange = "10";
+                var ratingCount = mpCommunity.querySelector("span[itemprop=ratingCount]").innerHTML;
+                var ratingInfo = "MP Community";
+                var tabs = "\t";
+                resultString += rating+"/"+ratingRange+"\t"+ratingInfo+"\t(Bewertungen: "+ratingCount+")";
+                
+                rating = otherRatings[0].children[0].innerHTML;
+                var ratingRange = "10";
+                ratingCount = otherRatings[0].children[1].children[1].innerHTML.match(/\d*/)[0];
+                ratingInfo = "MP Kritiker";
+                tabs = "\t";
+                resultString += "\n"+rating+"/"+ratingRange+tabs+ratingInfo+"\t\t(Bewertungen: "+ratingCount+")";
+                
+                for(var i = 1; i < otherRatings.length; i++) {
+                        if(otherRatings[i].style.display == "inline") {
+                                rating = otherRatings[i].children[0].innerHTML;
+                                if(rating.match(/\d\.?\d?\d?/)) {
+                                        ratingRange = otherRatings[i].children[1].childNodes[4].innerHTML.match(/\d{1,3}$/)[0];
+                                        ratingCount = otherRatings[i].children[1].children[1].innerHTML.match(/\d*/)[0];
+                                        ratingInfo = otherRatings[i].children[1].childNodes[0].nodeValue;
+
+                                        var tabsCount = 4 - (ratingInfo.length / 4);
+                                        tabs = "\t";
+                                        for(var j = 1; j < tabsCount; j++) {
+                                                tabs += "\t";
+                                        }
+                                        resultString += "\n"+rating+"/"+ratingRange+"\t"+ratingInfo +tabs+"(Bewertungen: "+ratingCount+")";
+                                }
+                        }
+                }
+                return resultString;
         }
 }
 
@@ -1022,22 +1091,24 @@ function mcRatingScrapper(mcResponse, estCorrectness) {
 /* Rating-Scrapper for Metacritic */
         var mc_div = document.createElement('div');
         mc_div.id = C_ID_MCRATINGS;
-        
-        var ratingValue = mcResponse.querySelector("div.metascore_w > span[itemprop=ratingValue]");
-        var ratingCount = mcResponse.querySelector("span.count > a > span[itemprop=reviewCount]");
-        if(ratingValue !== null && ratingCount !== null) {
-                mc_div.appendChild(MPRatingFactory.buildRating(Refinery.refineRating(ratingValue.innerHTML), 'MC Metascore', Refinery.refineRatingCount(ratingCount.innerHTML), '100', estCorrectness, C_ID_MCCRITICSRATING));
+        var ratingValue = mcResponse.querySelector("div.critics > div > div > a > div")
+        var posRatingCount = mcResponse.querySelector("div.critics > div > div.charts > a > div.chart.positive > div > div.count");
+        var mixRatingCount = mcResponse.querySelector("div.critics > div > div.charts > a > div.chart.mixed > div > div.count");
+        var negRatingCount = mcResponse.querySelector("div.critics > div > div.charts > a > div.chart.negative > div > div.count");
+        if(ratingValue !== null && posRatingCount !== null && mixRatingCount !== null && negRatingCount !== null) {
+                var ratingCount = parseInt(Refinery.refineRatingCount(posRatingCount.innerHTML)) + parseInt(Refinery.refineRatingCount(mixRatingCount.innerHTML)) + parseInt(Refinery.refineRatingCount(negRatingCount.innerHTML))
+                mc_div.appendChild(MPRatingFactory.buildRating(Refinery.refineRating(ratingValue.innerHTML), 'MC Metascore', ratingCount, '100', estCorrectness, C_ID_MCCRITICSRATING));
         } else {
                 mc_div.appendChild(MPRatingFactory.getNotYetRating('MC Metascore', '100', estCorrectness, C_ID_MCCRITICSRATING));
         }
         
-        var ratingValue = mcResponse.querySelector("div.userscore_wrap > a > div.metascore_w");
-        var ratingCount = mcResponse.querySelectorAll("span.count > a");
-        
-        if(ratingValue !== null && ratingCount.length >= 2) {
-                ratingValue = ratingValue.innerHTML;
-                ratingCount = ratingCount[1].innerHTML.match(/\d*/)[0];
-                mc_div.appendChild(MPRatingFactory.buildRating(Refinery.refineRating(ratingValue), 'MC User Score', Refinery.refineRatingCount(ratingCount), '10', estCorrectness, C_ID_MCCOMMUNITYRATING));
+        var ratingValue = mcResponse.querySelector("div.users > div > div > a > div")
+        var posRatingCount = mcResponse.querySelector("div.users > div > div.charts > a > div.chart.positive > div > div.count");
+        var mixRatingCount = mcResponse.querySelector("div.users > div > div.charts > a > div.chart.mixed > div > div.count");
+        var negRatingCount = mcResponse.querySelector("div.users > div > div.charts > a > div.chart.negative > div > div.count");
+        if(ratingValue !== null && posRatingCount !== null && mixRatingCount !== null && negRatingCount !== null) {
+                var ratingCount = parseInt(Refinery.refineRatingCount(posRatingCount.innerHTML)) + parseInt(Refinery.refineRatingCount(mixRatingCount.innerHTML)) + parseInt(Refinery.refineRatingCount(negRatingCount.innerHTML))
+                mc_div.appendChild(MPRatingFactory.buildRating(Refinery.refineRating(ratingValue.innerHTML), 'MC User Score', ratingCount, '10', estCorrectness, C_ID_MCCOMMUNITYRATING));
         } else {
                 mc_div.appendChild(MPRatingFactory.getNotYetRating('MC User Score', '10', estCorrectness, C_ID_MCCOMMUNITYRATING));
         }
