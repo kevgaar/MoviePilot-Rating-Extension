@@ -20,7 +20,7 @@
 //
 // ==UserScript==
 // @name          MoviePilot Rating-Extension
-// @version       2.10
+// @version       2.11
 // @downloadURL   https://github.com/kevgaar/MoviePilot-Rating-Extension/raw/master/mp-ratingextension.user.js
 // @namespace     http://www.moviepilot.de/movies/*
 // @description   Script, mit dem die Bewertungen von IMDb und anderen Plattformen ermittelt und angezeigt werden sollen
@@ -44,7 +44,7 @@ var C_ID_MCCOMMUNITYRATING = 'mcComRating';
 var C_ID_TMDBRATING = 'tmdbRating';
 var C_ID_WIKIINFO = 'wikiInfo';
 
-var DEBUG_MODE = true;
+var DEBUG_MODE = false;
 var VERBOSE = true;
 //------/Constants---------------
 
@@ -859,8 +859,7 @@ function Rating () {
                 }
         }
         
-        //function returnPlausibleGoogleResult(googleHTML, fqdmRegExp) {
-        function getBestGoogleResult(googleResults) {
+       function getBestGoogleResult(googleResults) {
         /* Result-Scrapper for Google
         * Checks the results for plausibility
         *
@@ -1068,7 +1067,6 @@ function rtRatingScrapper(rtResponse, estCorrectness) {
         }
         
         // Audience
-        //var audienceStats = rtResponse.getElementsByClassName("audience-info")
         var queryResult = rtResponse.querySelectorAll("div.audience-info > div");
         if( queryResult.length >= 2) {
                 var audAvrRating   = queryResult[0].innerText.match(/\d\.?\d?/);
@@ -1091,10 +1089,12 @@ function mcRatingScrapper(mcResponse, estCorrectness) {
 /* Rating-Scrapper for Metacritic */
         var mc_div = document.createElement('div');
         mc_div.id = C_ID_MCRATINGS;
-        var ratingValue = mcResponse.querySelector("div.critics > div > div > a > div")
-        var posRatingCount = mcResponse.querySelector("div.critics > div > div.charts > a > div.chart.positive > div > div.count");
-        var mixRatingCount = mcResponse.querySelector("div.critics > div > div.charts > a > div.chart.mixed > div > div.count");
-        var negRatingCount = mcResponse.querySelector("div.critics > div > div.charts > a > div.chart.negative > div > div.count");
+        
+        var criticsDiv = mcResponse.querySelector("div.critics")
+        var ratingValue = criticsDiv.querySelector("div.metascore_w")
+        var posRatingCount = criticsDiv.querySelector("div.chart.positive > div > div.count");
+        var mixRatingCount = criticsDiv.querySelector("div.chart.mixed > div > div.count");
+        var negRatingCount = criticsDiv.querySelector("div.chart.negative > div > div.count");
         if(ratingValue !== null && posRatingCount !== null && mixRatingCount !== null && negRatingCount !== null) {
                 var ratingCount = parseInt(Refinery.refineRatingCount(posRatingCount.innerHTML)) + parseInt(Refinery.refineRatingCount(mixRatingCount.innerHTML)) + parseInt(Refinery.refineRatingCount(negRatingCount.innerHTML))
                 mc_div.appendChild(MPRatingFactory.buildRating(Refinery.refineRating(ratingValue.innerHTML), 'MC Metascore', ratingCount, '100', estCorrectness, C_ID_MCCRITICSRATING));
@@ -1102,10 +1102,11 @@ function mcRatingScrapper(mcResponse, estCorrectness) {
                 mc_div.appendChild(MPRatingFactory.getNotYetRating('MC Metascore', '100', estCorrectness, C_ID_MCCRITICSRATING));
         }
         
-        var ratingValue = mcResponse.querySelector("div.users > div > div > a > div")
-        var posRatingCount = mcResponse.querySelector("div.users > div > div.charts > a > div.chart.positive > div > div.count");
-        var mixRatingCount = mcResponse.querySelector("div.users > div > div.charts > a > div.chart.mixed > div > div.count");
-        var negRatingCount = mcResponse.querySelector("div.users > div > div.charts > a > div.chart.negative > div > div.count");
+        var usersDiv = mcResponse.querySelector("div.users")
+        var ratingValue = usersDiv.querySelector("div.metascore_w")
+        var posRatingCount = usersDiv.querySelector("div.chart.positive > div > div.count");
+        var mixRatingCount = usersDiv.querySelector("div.chart.mixed > div > div.count");
+        var negRatingCount = usersDiv.querySelector("div.chart.negative > div > div.count");
         if(ratingValue !== null && posRatingCount !== null && mixRatingCount !== null && negRatingCount !== null) {
                 var ratingCount = parseInt(Refinery.refineRatingCount(posRatingCount.innerHTML)) + parseInt(Refinery.refineRatingCount(mixRatingCount.innerHTML)) + parseInt(Refinery.refineRatingCount(negRatingCount.innerHTML))
                 mc_div.appendChild(MPRatingFactory.buildRating(Refinery.refineRating(ratingValue.innerHTML), 'MC User Score', ratingCount, '10', estCorrectness, C_ID_MCCOMMUNITYRATING));
