@@ -20,7 +20,7 @@
 //
 // ==UserScript==
 // @name          MoviePilot Rating-Extension
-// @version       2.11
+// @version       2.12
 // @downloadURL   https://github.com/kevgaar/MoviePilot-Rating-Extension/raw/master/mp-ratingextension.user.js
 // @namespace     http://www.moviepilot.de/movies/*
 // @description   Script, mit dem die Bewertungen von IMDb und anderen Plattformen ermittelt und angezeigt werden sollen
@@ -1090,7 +1090,7 @@ function mcRatingScrapper(mcResponse, estCorrectness) {
         var mc_div = document.createElement('div');
         mc_div.id = C_ID_MCRATINGS;
         
-        var criticsDiv = mcResponse.querySelector("div.critics")
+        var criticsDiv = mcResponse.querySelector("div.critics_col")
         var ratingValue = criticsDiv.querySelector("div.metascore_w")
         var posRatingCount = criticsDiv.querySelector("div.chart.positive > div > div.count");
         var mixRatingCount = criticsDiv.querySelector("div.chart.mixed > div > div.count");
@@ -1102,7 +1102,7 @@ function mcRatingScrapper(mcResponse, estCorrectness) {
                 mc_div.appendChild(MPRatingFactory.getNotYetRating('MC Metascore', '100', estCorrectness, C_ID_MCCRITICSRATING));
         }
         
-        var usersDiv = mcResponse.querySelector("div.users")
+        var usersDiv = mcResponse.querySelector("div.users_col")
         var ratingValue = usersDiv.querySelector("div.metascore_w")
         var posRatingCount = usersDiv.querySelector("div.chart.positive > div > div.count");
         var mixRatingCount = usersDiv.querySelector("div.chart.mixed > div > div.count");
