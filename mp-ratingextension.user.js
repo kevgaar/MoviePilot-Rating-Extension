@@ -20,7 +20,7 @@
 //
 // ==UserScript==
 // @name          MoviePilot Rating-Extension
-// @version       2.13
+// @version       2.14
 // @downloadURL   https://github.com/kevgaar/MoviePilot-Rating-Extension/raw/master/mp-ratingextension.user.js
 // @namespace     http://www.moviepilot.de/movies/*
 // @description   Script, mit dem die Bewertungen von IMDb und anderen Plattformen ermittelt und angezeigt werden sollen
@@ -114,8 +114,9 @@ function collectEnglishMovieTitles(tmdbResponse) {
         if (titleDiv !== null) {
                 var title = titleDiv.childNodes[0].nodeValue
                 length = Rating.movieAliases.length;
-                pushStringToSet(Rating.movieAliases, Refinery.refineString(title));
-                moveStringToFirstPosition(Rating.movieAliases, Refinery.refineString(title));
+                match = Refinery.refineString(title);
+                pushStringToSet(Rating.movieAliases, Refinery.refineString(match));
+                moveStringToFirstPosition(Rating.movieAliases, Refinery.refineString(match));
                 if(length < Rating.movieAliases.length) {
                         MPExtension.addTitleToMP(match);
                 }
