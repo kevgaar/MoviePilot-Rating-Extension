@@ -20,7 +20,7 @@
 //
 // ==UserScript==
 // @name          MoviePilot Rating-Extension
-// @version       2.12
+// @version       2.13
 // @downloadURL   https://github.com/kevgaar/MoviePilot-Rating-Extension/raw/master/mp-ratingextension.user.js
 // @namespace     http://www.moviepilot.de/movies/*
 // @description   Script, mit dem die Bewertungen von IMDb und anderen Plattformen ermittelt und angezeigt werden sollen
@@ -1002,16 +1002,20 @@ function Rating () {
                                 synchronous: this.REQ_SYNCHRONOUS,
                                 timeout: this.REQ_TIMEOUT,
                                 onreadystatechange: function(response) {
-                                        if(response.status == 200 && response.readyState == 4) { //Successfull request
-                                                callback(request, response);
-                                        } else if(response.readyState == 4 && response.status >= 500 && response.status < 600) { //Server error
-                                                var rating = null;
-                                                if(response.finalUrl.match(/(ipv4|ipv6).google.(de|com)\/sorry/) !== null) { //Blocked by Google; Too many requests
-                                                        MPExtension.appendNewContainer('google');
-                                                        rating = MPRatingFactory.wrapRatingWithLink(MPRatingFactory.buildInfo('Google blocked','Click and enter captcha to unlock', 'google'), request);
-                                                        MPExtension.addRatingToContainer('google', rating);
+                                        if(response.readyState == 4) {
+                                                if(response.status == 200) { //Successfull request
+                                                        callback(request, response);
+                                                } else if(response.status >= 500 && response.status < 600) { //Server error
+                                                        var rating = null;
+                                                        log("ERROR: Status-Code: " + response.status)
+                                                        if(response.finalUrl.match(/(ipv4|ipv6).google.(de|com)\/sorry/) !== null) { //Blocked by Google; Too many requests
+                                                                MPExtension.appendNewContainer('google');
+                                                                rating = MPRatingFactory.wrapRatingWithLink(MPRatingFactory.buildInfo('Google blocked','Click and enter captcha to unlock', 'google'), request);
+                                                                MPExtension.addRatingToContainer('google', rating);
+                                                        }
                                                 } else { //Default error
-                                                        rating = MPRatingFactory.wrapRatingWithLink(MPRatingFactory.getErrorRating(ratingSite, ratingRange, ratingDivId), request);
+                                                        log("ERROR: Status-Code: " + response.status)
+                                                        rating = MPRatingFactory.getErrorRating(ratingSite, ratingRange, ratingDivId);
                                                         MPExtension.addRatingToContainer(ratingId, rating);
                                                 }
                                         }
