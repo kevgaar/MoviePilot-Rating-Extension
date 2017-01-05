@@ -20,7 +20,7 @@
 //
 // ==UserScript==
 // @name          MoviePilot Rating-Extension
-// @version       2.14
+// @version       2.15
 // @downloadURL   https://github.com/kevgaar/MoviePilot-Rating-Extension/raw/master/mp-ratingextension.user.js
 // @namespace     http://www.moviepilot.de/movies/*
 // @description   Script, mit dem die Bewertungen von IMDb und anderen Plattformen ermittelt und angezeigt werden sollen
@@ -1008,14 +1008,18 @@ function Rating () {
                                                         callback(request, response);
                                                 } else if(response.status >= 500 && response.status < 600) { //Server error
                                                         var rating = null;
-                                                        log("ERROR: Status-Code: " + response.status)
+                                                        if(DEBUG_MODE) {
+                                                                log("ERROR: Status-Code: " + response.status)
+                                                        }
                                                         if(response.finalUrl.match(/(ipv4|ipv6).google.(de|com)\/sorry/) !== null) { //Blocked by Google; Too many requests
                                                                 MPExtension.appendNewContainer('google');
                                                                 rating = MPRatingFactory.wrapRatingWithLink(MPRatingFactory.buildInfo('Google blocked','Click and enter captcha to unlock', 'google'), request);
                                                                 MPExtension.addRatingToContainer('google', rating);
                                                         }
                                                 } else { //Default error
-                                                        log("ERROR: Status-Code: " + response.status)
+                                                        if(DEBUG_MODE) {
+                                                                log("ERROR: Status-Code: " + response.status)
+                                                        }
                                                         rating = MPRatingFactory.getErrorRating(ratingSite, ratingRange, ratingDivId);
                                                         MPExtension.addRatingToContainer(ratingId, rating);
                                                 }
