@@ -44,7 +44,7 @@ var C_ID_MCCOMMUNITYRATING = 'mcComRating';
 var C_ID_TMDBRATING = 'tmdbRating';
 var C_ID_WIKIINFO = 'wikiInfo';
 
-//var DEBUG_MODE = true;
+var DEBUG_MODE = false;
 var VERBOSE = true;
 //------/Constants---------------
 
