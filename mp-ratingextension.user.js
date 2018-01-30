@@ -20,7 +20,7 @@
 //
 // ==UserScript==
 // @name          MoviePilot Rating-Extension
-// @version       2.16
+// @version       2.17
 // @downloadURL   https://github.com/kevgaar/MoviePilot-Rating-Extension/raw/master/mp-ratingextension.user.js
 // @namespace     https://www.moviepilot.de/movies/*
 // @description   Script, mit dem die Bewertungen von IMDb und anderen Plattformen ermittelt und angezeigt werden sollen
@@ -1034,12 +1034,6 @@ function Rating () {
                 var div = document.createElement("div");
                 div.innerHTML = html;
                 return div;
-                /*
-                var template = document.createElement("template");
-                html = html.trim();
-                template.innerHTML = html;
-                return template.content.firstChild;
-                */
         }
 
         function log(info) {
@@ -1393,13 +1387,7 @@ function Refinery() {
         
         this.refineRating = function(rating) {
         /* Refine/standardize ratings */
-                /*
-                var refinedRating = rating.replace(/,/,".");
-                refinedRating = this.trimWhitespaces(refinedRating);
-                refinedRating = refinedRating.split("/")[0];
-                */
                 var refinedRating = rating.match(/((\d\d+)|(\d\.?\d*))/)
-                //if(refinedRating.match(/\d\.?\d?\d?/)) {
                 if(refinedRating !== null) {
                         return refinedRating[0];
                 } else {
