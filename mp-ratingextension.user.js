@@ -20,12 +20,12 @@
 //
 // ==UserScript==
 // @name          MoviePilot Rating-Extension
-// @version       2.15
+// @version       2.16
 // @downloadURL   https://github.com/kevgaar/MoviePilot-Rating-Extension/raw/master/mp-ratingextension.user.js
-// @namespace     http://www.moviepilot.de/movies/*
+// @namespace     https://www.moviepilot.de/movies/*
 // @description   Script, mit dem die Bewertungen von IMDb und anderen Plattformen ermittelt und angezeigt werden sollen
-// @include       http://www.moviepilot.de/movies/*
-// @exclude       http://www.moviepilot.de/movies/*/*
+// @include       https://www.moviepilot.de/movies/*
+// @exclude       https://www.moviepilot.de/movies/*/*
 // @grant         GM_xmlhttpRequest
 
 // ==/UserScript==
@@ -44,7 +44,7 @@ var C_ID_MCCOMMUNITYRATING = 'mcComRating';
 var C_ID_TMDBRATING = 'tmdbRating';
 var C_ID_WIKIINFO = 'wikiInfo';
 
-var DEBUG_MODE = false;
+//var DEBUG_MODE = true;
 var VERBOSE = true;
 //------/Constants---------------
 
@@ -65,7 +65,7 @@ Rating.movieAliases = movieData[0];
 Rating.movieYear = movieData[1];
 Rating.correctness = {PERFECT: 0, GOOD: 1, OKAY: 2, BAD: 3, POOR: 4};
 
-var tmdbRating = new Rating().ratingSite('TMDB').ratingSiteAbbr('TMDB').ratingId('tmdb').ratingDivId(C_ID_TMDBRATING).websiteURL('www.themoviedb.org/movie/').scrapperFunction(tmdbRatingScrapper).googleHookFunction(startOtherRatings).responseSiteHookFunction(collectEnglishMovieTitles).numberOfResultsIncluded(5).blacklist(new RegExp(/\s?TMDb$/i)).blacklist(new RegExp(/(?:(?=The Movie Database)The Movie Database|(?=The Movie)The Movie|(?=The)The)$/i)).blacklist(new RegExp(/Recommended Movies/i)).ratingLinkModifier(tmdbLinkModifier).ratingRequestModifier(tmdbRequestModifier);
+var tmdbRating = new Rating().ratingSite('TMDB').ratingSiteAbbr('TMDB').ratingId('tmdb').ratingDivId(C_ID_TMDBRATING).websiteURL('https://www.themoviedb.org/movie/').scrapperFunction(tmdbRatingScrapper).responseSiteHookFunction(collectEnglishMovieTitles).numberOfResultsIncluded(10).blacklist(new RegExp(/\s?TMDb$/i)).blacklist(new RegExp(/(?:(?=The Movie Database)The Movie Database|(?=The Movie)The Movie|(?=The)The)$/i)).blacklist(new RegExp(/Recommended Movies/i)).ratingLinkModifier(tmdbLinkModifier).ratingRequestModifier(tmdbRequestModifier);
 var imdbRating = new Rating().ratingSite('IMDB').ratingSiteAbbr('IMDB').ratingRange('10').ratingId('imdb').ratingDivId(C_ID_IMDBRATING).websiteURL('www.imdb.com/title').googleRating().numberOfResultsIncluded(5).blacklist(new RegExp(/IMDb$/i)).blacklist(new RegExp(/TV Movie/i)).ratingRequestModifier(imdbRequestModifier);
 var rtRating = new Rating().ratingSite('rotten tomatoes').ratingSiteAbbr('RT').ratingId('rt').ratingDivId(C_ID_RTRATINGS).websiteURL('www.rottentomatoes.com/m/').scrapperFunction(rtRatingScrapper).numberOfResultsIncluded(5).blacklist(new RegExp(/(?:(?=Rotten Tomatoes)Rotten Tomatoes|(?=Rotten)Rotten)$/i)).blacklist(new RegExp(Rating.movieYear+ " Original", "i")).ratingRequestModifier(rtRequestModifier);
 var mcRating = new Rating().ratingSite('metacritic').ratingSiteAbbr('MC').ratingId('mc').ratingDivId(C_ID_MCRATINGS).websiteURL('www.metacritic.com/movie/').scrapperFunction(mcRatingScrapper).numberOfResultsIncluded(5).blacklist(new RegExp(/Metacritic$/i)).blacklist(new RegExp(/Reviews/i)).ratingRequestModifier(mcRequestModifier);
@@ -110,7 +110,7 @@ function collectEnglishMovieTitles(tmdbResponse) {
         var type;
         
         // default page
-        var titleDiv = tmdbResponse.querySelector("div.title > h2 > a ");
+        var titleDiv = tmdbResponse.querySelector("div.title > span > a > h2");
         if (titleDiv !== null) {
                 var title = titleDiv.childNodes[0].nodeValue
                 length = Rating.movieAliases.length;
@@ -1031,9 +1031,15 @@ function Rating () {
         
         function parseToHTMLElement(html) {
         /* Parse a  */
-                var htmlObject = document.createElement("html");
-                htmlObject.innerHTML = html;
-                return htmlObject;
+                var div = document.createElement("div");
+                div.innerHTML = html;
+                return div;
+                /*
+                var template = document.createElement("template");
+                html = html.trim();
+                template.innerHTML = html;
+                return template.content.firstChild;
+                */
         }
 
         function log(info) {
@@ -1098,9 +1104,10 @@ function mcRatingScrapper(mcResponse, estCorrectness) {
 /* Rating-Scrapper for Metacritic */
         var mc_div = document.createElement('div');
         mc_div.id = C_ID_MCRATINGS;
-        
-        var criticsDiv = mcResponse.querySelector("div.critics_col")
-        var ratingValue = criticsDiv.querySelector("div.metascore_w")
+
+        var scoreDiv = mcResponse.querySelector("#nav_to_metascore");
+        var criticsDiv = scoreDiv.querySelector("div:nth-child(2) > div.distribution");
+        var ratingValue = criticsDiv.querySelector("div.metascore_w");
         var posRatingCount = criticsDiv.querySelector("div.chart.positive > div > div.count");
         var mixRatingCount = criticsDiv.querySelector("div.chart.mixed > div > div.count");
         var negRatingCount = criticsDiv.querySelector("div.chart.negative > div > div.count");
@@ -1111,8 +1118,8 @@ function mcRatingScrapper(mcResponse, estCorrectness) {
                 mc_div.appendChild(MPRatingFactory.getNotYetRating('MC Metascore', '100', estCorrectness, C_ID_MCCRITICSRATING));
         }
         
-        var usersDiv = mcResponse.querySelector("div.users_col")
-        var ratingValue = usersDiv.querySelector("div.metascore_w")
+        var usersDiv = scoreDiv.querySelector("div:nth-child(3) > div.distribution");
+        var ratingValue = usersDiv.querySelector("div.metascore_w");
         var posRatingCount = usersDiv.querySelector("div.chart.positive > div > div.count");
         var mixRatingCount = usersDiv.querySelector("div.chart.mixed > div > div.count");
         var negRatingCount = usersDiv.querySelector("div.chart.negative > div > div.count");
@@ -1140,9 +1147,9 @@ function tmdbRatingScrapper(tmdbResponse, estCorrectness) {
                 ratingCount = ratingCountSpan.innerHTML;
         } else {
                 //common movie page
-                var ratingSpan = tmdbResponse.querySelector("span.rating");
-                if(ratingSpan !== null) {
-                        rating = ratingSpan.innerHTML;
+                var ratingDiv = tmdbResponse.querySelector("div.user_score_chart");
+                if(ratingDiv !== null) {
+                        rating = ratingDiv.attributes[1].nodeValue;
                 }
         }
         
@@ -1386,12 +1393,15 @@ function Refinery() {
         
         this.refineRating = function(rating) {
         /* Refine/standardize ratings */
+                /*
                 var refinedRating = rating.replace(/,/,".");
                 refinedRating = this.trimWhitespaces(refinedRating);
                 refinedRating = refinedRating.split("/")[0];
-                
-                if(refinedRating.match(/\d\.?\d?\d?/)) {
-                        return refinedRating;
+                */
+                var refinedRating = rating.match(/((\d\d+)|(\d\.?\d*))/)
+                //if(refinedRating.match(/\d\.?\d?\d?/)) {
+                if(refinedRating !== null) {
+                        return refinedRating[0];
                 } else {
                         return '-';
                 }
